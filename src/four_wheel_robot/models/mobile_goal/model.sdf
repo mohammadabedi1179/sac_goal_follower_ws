@@ -1,0 +1,79 @@
+<?xml version="1.0" ?>
+<sdf version="1.7">
+  <model name="goal_marker">
+    <pose>0 0 0 0 0 0</pose>
+    <static>false</static>
+
+    <!-- ================= BASE ================= -->
+    <link name="base_link">
+      <pose>0 0 0.10 0 0 0</pose>
+      <inertial><mass>1.2</mass></inertial>
+      <collision name="base_collision">
+        <geometry><box><size>0.40 0.30 0.15</size></box></geometry>
+      </collision>
+      <visual name="base_visual">
+        <geometry><box><size>0.40 0.30 0.15</size></box></geometry>
+        <material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material>
+      </visual>
+    </link>
+
+    <!-- ================= LEFT WHEEL ================= -->
+    <link name="left_wheel">
+      <pose>0 0.17 0.075 0 0 0</pose>
+      <collision name="left_wheel_collision">
+        <pose>0 0 0 0 1.5708 0</pose>
+        <geometry><cylinder><radius>0.075</radius><length>0.04</length></cylinder></geometry>
+      </collision>
+      <visual name="left_wheel_visual">
+        <pose>0 0 0 0 1.5708 0</pose>
+        <geometry><cylinder><radius>0.075</radius><length>0.04</length></cylinder></geometry>
+        <material><ambient>0.1 0.1 0.1 1</ambient></material>
+      </visual>
+    </link>
+
+    <joint name="left_wheel_joint" type="continuous">
+      <parent>base_link</parent>
+      <child>left_wheel</child>
+      <pose>0 0.17 0.075 0 0 0</pose>
+      <axis><xyz>0 1 0</xyz></axis>
+    </joint>
+
+    <!-- ================= RIGHT WHEEL ================= -->
+    <link name="right_wheel">
+      <pose>0 -0.17 0.075 0 0 0</pose>
+      <collision name="right_wheel_collision">
+        <pose>0 0 0 0 1.5708 0</pose>
+        <geometry><cylinder><radius>0.075</radius><length>0.04</length></cylinder></geometry>
+      </collision>
+      <visual name="right_wheel_visual">
+        <pose>0 0 0 0 1.5708 0</pose>
+        <geometry><cylinder><radius>0.075</radius><length>0.04</length></cylinder></geometry>
+        <material><ambient>0.1 0.1 0.1 1</ambient></material>
+      </visual>
+    </link>
+
+    <joint name="right_wheel_joint" type="continuous">
+      <parent>base_link</parent>
+      <child>right_wheel</child>
+      <pose>0 -0.17 0.075 0 0 0</pose>
+      <axis><xyz>0 1 0</xyz></axis>
+    </joint>
+
+    <!-- ================= DIFF-DRIVE PLUGIN ================= -->
+    <plugin name="goal_diff_drive" filename="libgazebo_ros_diff_drive.so">
+      <ros>
+        <namespace>/goal_marker</namespace>
+        <remapping>cmd_vel:=/goal_marker/cmd_vel</remapping>
+        <remapping>odom:=/goal_marker/odom</remapping>
+      </ros>
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>0.34</wheel_separation>
+      <wheel_diameter>0.15</wheel_diameter>
+      <publish_odom>true</publish_odom>
+      <publish_wheel_tf>false</publish_wheel_tf>
+      <odometry_frame>goal_odom</odometry_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+    </plugin>
+  </model>
+</sdf>

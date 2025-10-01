@@ -1,0 +1,124 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <joint name="camera_back_joint" type="fixed">
+        <parent link="handle_middle"/>
+        <child link="camera_back_link"/>
+        <origin xyz="0.03 0 0.15" rpy="0 0 0"/>
+    </joint>
+    
+    <link name="camera_back_link">
+        <visual>
+            <geometry>
+                <box size= "0.005 0.09 0.025"/>
+            </geometry>
+            <material name="material_black"/>
+        </visual>
+    </link>
+    <gazebo reference="camera_back_link">
+    <material>Gazebo/Black</material>
+    </gazebo>
+
+    <joint name="camera_right_joint" type="fixed">
+        <parent link="camera_back_link"/>
+        <child link="camera_right_link"/>
+        <origin xyz="0.0025 0.03 0" rpy="0 0 0"/>
+    </joint>
+    
+    <link name="camera_right_link">
+        <visual>
+            <origin xyz="0.005 0 0" rpy="0 ${-pi/2} 0"/>
+            <geometry>
+                <cylinder radius= "0.005" length="0.01"/>
+            </geometry>
+            <material name="material_white"/>
+        </visual>
+    </link>
+
+
+    <joint name="camera_right_optical_joint" type="fixed">
+        <parent link="camera_right_link"/>
+        <child link="camera_right_link_optical"/>
+        <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+    </joint>
+
+    <link name="camera_right_link_optical"></link>
+    
+    <gazebo reference="camera_right_link">
+        <material>Gazebo/White</material>
+        <sensor name="camera_r" type="camera">
+            <pose> 0 0 0 0 0 0 </pose>
+            <visualize>true</visualize>
+            <update_rate>30</update_rate>
+            <camera>
+                <horizontal_fov>1.2789</horizontal_fov>
+                <vertical_fov>0.873</vertical_fov>
+                <image>
+                    <format>B8G8R8</format>
+                    <width>1640</width>
+                    <height>1232</height>
+                </image>
+                <clip>
+                    <near>0.03</near>
+                    <far>8.0</far>
+                </clip>
+            </camera>
+            <plugin name="camera_controller_r" filename="libgazebo_ros_camera.so">
+                <frame_name>camera_right_link_optical</frame_name>
+                <min_depth>0.1</min_depth>
+                <max_depth>100.0</max_depth>
+            </plugin>
+        </sensor>
+    </gazebo>
+    <joint name="camera_left_joint" type="fixed">
+        <parent link="camera_back_link"/>
+        <child link="camera_left_link"/>
+        <origin xyz="0.0025 -0.03 0" rpy="0 0 0"/>
+    </joint>
+    
+    <link name="camera_left_link">
+        <visual>
+            <origin xyz="0.005 0 0" rpy="0 ${-pi/2} 0"/>
+            <geometry>
+                <cylinder radius= "0.005" length="0.01"/>
+            </geometry>
+            <material name="material_white"/>
+        </visual>
+    </link>
+
+
+    <joint name="camera_left_optical_joint" type="fixed">
+        <parent link="camera_left_link"/>
+        <child link="camera_left_link_optical"/>
+        <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+    </joint>
+
+    <link name="camera_left_link_optical"></link>
+
+    <gazebo reference="camera_left_link">
+        <material>Gazebo/White</material>
+        <sensor name="camera_l" type="camera">
+            <pose> 0 0 0 0 0 0 </pose>
+            <visualize>true</visualize>
+            <update_rate>30</update_rate>
+            <camera>
+                <horizontal_fov>1.2789</horizontal_fov>
+                <vertical_fov>0.873</vertical_fov>
+                <image>
+                    <format>B8G8R8</format>
+                    <width>1640</width>
+                    <height>1232</height>
+                </image>
+                <clip>
+                    <near>0.03</near>
+                    <far>8.0</far>
+                </clip>
+            </camera>
+            <plugin name="camera_controller_l" filename="libgazebo_ros_camera.so">
+                <frame_name>camera_left_link_optical</frame_name>
+                <min_depth>0.1</min_depth>
+                <max_depth>100.0</max_depth>
+            </plugin>
+        </sensor>
+    </gazebo>    
+</robot>

@@ -1,0 +1,326 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="https://www.ros.org/wiki/xacro">
+    <xacro:include filename="inertial_macros.xacro" />
+
+    <material name="material_red">
+        <color rgba="1.0 0.0 0.0 1.0"/>
+    </material>
+
+    <material name="material_green">
+        <color rgba="0.0 1.0 0.0 1.0"/>
+    </material>
+
+    <material name="material_blue">
+        <color rgba="0.0 0.0 1.0 1.0"/>
+    </material>
+
+    <material name="material_yellow">
+        <color rgba="1.0 1.0 0.0 1.0"/>
+    </material>
+
+    <material name="material_purple">
+        <color rgba="0.5 0.0 0.5 1.0"/>
+    </material>
+
+    <material name="material_cyan">
+        <color rgba="0.0 1.0 1.0 1.0"/>
+    </material>
+
+    <material name="material_orange">
+        <color rgba="1.0 0.5 0.0 1.0"/>
+    </material>
+
+    <material name="material_pink">
+        <color rgba="1.0 0.0 1.0 1.0"/>
+    </material>
+
+    <material name="material_brown">
+        <color rgba="0.6 0.4 0.2 1.0"/>
+    </material>
+
+    <material name="material_gray">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+    </material>
+
+    <material name="material_white">
+        <color rgba="1.0 1.0 1.0 1.0"/>
+    </material>
+
+    <material name="material_black">
+        <color rgba="0.0 0.0 0.0 1.0"/>
+    </material>
+
+    <!-- BASE LINK -->
+
+    <link name="base_link">
+    </link>
+
+
+    <!-- CHASSIS LINK -->
+    
+    <joint name="chassis_joint" type="fixed">
+        <parent link="base_link" />
+        <child link="chassis" />
+        <origin xyz="-0.4 0 0" />
+    </joint>
+
+    <link name="chassis">
+        <visual>
+            <origin xyz="0.4 0 0.15" />
+            <geometry>
+                <box size="0.8 0.8 0.3"/>
+            </geometry>
+            <material name="material_white"/>
+        </visual>
+        <collision>
+            <origin xyz="0.4 0 0.15" />
+            <geometry>
+                <box size="0.8 0.8 0.3"/>
+            </geometry>
+            <material name="material_white"/>
+        </collision>
+        <xacro:inertial_box mass="30" x="0.8" y="0.8" z="0.3">
+            <origin xyz="0.4 0 0.15" rpy="0 0 0" />
+        </xacro:inertial_box>
+    </link>
+    <gazebo reference="chassis">
+        <material> Gazebo/White </material>
+    </gazebo>
+
+    <!-- RIGHT BACK WHEEL LINK-->
+    
+    <joint name="right_back_wheel_joint" type="continuous">
+        <parent link="base_link" />
+        <child link="right_back_wheel" />
+        <origin xyz="-0.3 -0.425 0" rpy="0 0 0" />
+        <axis xyz="0 1 0" />
+    </joint>
+    <link name="right_back_wheel">
+        <visual>
+            <origin xyz="0 0 0" rpy="${3*pi/2} 0 0"/>
+            <geometry>
+                <cylinder length="0.05" radius="0.1"/>
+            </geometry>
+            <material name="material_black"/>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="${3*pi/2} 0 0"/>
+            <geometry>
+                <cylinder length="0.05" radius="0.1"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_cylinder mass="0.1" length="0.05" radius="0.1">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_cylinder>
+    </link>
+    <gazebo reference="right_back_wheel">
+        <material> Gazebo/Blue </material>
+        <mu1>1.0</mu1><mu2>1.0</mu2>
+        <kp>1e6</kp><kd>1</kd>
+    </gazebo>
+
+    <!-- LEFT BACK WHEEL LINK-->
+    
+    <joint name="left_back_wheel_joint" type="continuous">
+        <parent link="base_link" />
+        <child link="left_back_wheel" />
+        <origin xyz="-0.3 0.425 0" rpy="0 0 0" />
+        <axis xyz="0 1 0" />
+    </joint>
+    
+    <link name="left_back_wheel">
+        <visual>
+            <origin xyz="0 0 0" rpy="${-pi/2} 0 0"/>
+            <geometry>
+                <cylinder length="0.05" radius="0.1"/>
+            </geometry>
+            <material name="material_black"/>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="${-pi/2} 0 0"/>
+            <geometry>
+                <cylinder length="0.05" radius="0.1"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_cylinder mass="0.1" length="0.05" radius="0.1">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_cylinder>
+    </link>
+    <gazebo reference="left_back_wheel">
+        <material> Gazebo/Blue </material>
+        <mu1>1.0</mu1><mu2>1.0</mu2>
+        <kp>1e6</kp><kd>1</kd>
+    </gazebo>
+
+    <!-- RIGHT FRONT WHEEL LINK-->
+    
+    <joint name="right_front_wheel_joint" type="continuous">
+        <parent link="base_link" />
+        <child link="right_front_wheel" />
+        <origin xyz="0.3 -0.425 0" rpy="0 0 0" />
+        <axis xyz="0 1 0" />
+    </joint>
+    <link name="right_front_wheel">
+        <visual>
+            <origin xyz="0 0 0" rpy="${3*pi/2} 0 0"/>
+            <geometry>
+                <cylinder length="0.05" radius="0.1"/>
+            </geometry>
+            <material name="material_black"/>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="${3*pi/2} 0 0"/>
+            <geometry>
+                <cylinder length="0.05" radius="0.1"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_cylinder mass="0.1" length="0.05" radius="0.1">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_cylinder>
+    </link>
+    <gazebo reference="right_front_wheel">
+        <material> Gazebo/Blue </material>
+        <mu1>1.0</mu1><mu2>1.0</mu2>
+        <kp>1e6</kp><kd>1</kd>
+    </gazebo>
+
+    <!-- LEFT FRONT WHEEL LINK-->
+    
+    <joint name="left_front_wheel_joint" type="continuous">
+        <parent link="base_link" />
+        <child link="left_front_wheel" />
+        <origin xyz="0.3 0.425 0" rpy="0 0 0" />
+        <axis xyz="0 1 0" />
+    </joint>
+    
+    <link name="left_front_wheel">
+        <visual>
+            <origin xyz="0 0 0" rpy="${-pi/2} 0 0"/>
+            <geometry>
+                <cylinder length="0.05" radius="0.1"/>
+            </geometry>
+            <material name="material_black"/>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="${-pi/2} 0 0"/>
+            <geometry>
+                <cylinder length="0.05" radius="0.1"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_cylinder mass="0.1" length="0.05" radius="0.1">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_cylinder>
+    </link>
+    <gazebo reference="left_front_wheel">
+        <material> Gazebo/Blue </material>
+        <mu1>1.0</mu1><mu2>1.0</mu2>
+        <kp>1e6</kp><kd>1</kd>
+    </gazebo>
+    
+    <!-- HANDLE MIDDLE LINK-->
+    
+    <joint name="handle_middle_joint" type="fixed">
+        <parent link="base_link" />
+        <child link="handle_middle" />
+        <origin xyz="0.37 0 0.65" rpy="0 0 0" />
+        <axis xyz="0 0 0" />
+    </joint>
+
+    <link name="handle_middle">
+        <visual>
+            <origin xyz="0 0 0" />
+            <geometry>
+                <cylinder length="0.7" radius="0.03"/>
+            </geometry>
+            <material name="material_gray"/>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" />
+            <geometry>
+                <cylinder length="0.7" radius="0.03"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_cylinder mass="0.1" length="0.7" radius="0.03">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_cylinder>
+    </link>
+    <gazebo reference="handle_middle">
+        <material> Gazebo/Grey </material>
+    </gazebo>
+
+    <!-- HANDLE LINK-->
+    
+    <joint name="handle_joint" type="fixed">
+        <parent link="handle_middle" />
+        <child link="handle" />
+        <origin xyz="0 0 0.35" rpy="${pi/2} 0 0" />
+        <axis xyz="0 0 0" />
+    </joint>
+
+    <link name="handle">
+        <visual>
+            <origin xyz="0 0 0" />
+            <geometry>
+                <cylinder length="0.4" radius="0.015"/>
+            </geometry>
+            <material name="material_gray"/>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" />
+            <geometry>
+                <cylinder length="0.4" radius="0.015"/>
+            </geometry>
+        </collision>
+        <xacro:inertial_cylinder mass="0.1" length="0.4" radius="0.015">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_cylinder>
+    </link>
+    <gazebo reference="handle">
+        <material> Gazebo/Grey </material>
+    </gazebo>
+    <!-- Transmissions for wheel joints -->
+    <transmission name="left_front_wheel_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="left_front_wheel_joint">
+        <hardwareInterface>velocity</hardwareInterface>
+    </joint>
+    <actuator name="left_front_wheel_motor">
+        <hardwareInterface>velocity</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+    </transmission>
+
+    <transmission name="left_back_wheel_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="left_back_wheel_joint">
+        <hardwareInterface>velocity</hardwareInterface>
+    </joint>
+    <actuator name="left_back_wheel_motor">
+        <hardwareInterface>velocity</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+    </transmission>
+
+    <transmission name="right_front_wheel_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="right_front_wheel_joint">
+        <hardwareInterface>velocity</hardwareInterface>
+    </joint>
+    <actuator name="right_front_wheel_motor">
+        <hardwareInterface>velocity</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+    </transmission>
+
+    <transmission name="right_back_wheel_trans">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="right_back_wheel_joint">
+        <hardwareInterface>velocity</hardwareInterface>
+    </joint>
+    <actuator name="right_back_wheel_motor">
+        <hardwareInterface>velocity</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+    </transmission>
+
+</robot>

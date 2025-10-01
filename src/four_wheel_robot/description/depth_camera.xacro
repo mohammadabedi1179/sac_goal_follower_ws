@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <!-- Depth camera joint/link -->
+
+    <joint name="depth_camera_joint" type="fixed">
+            <parent link="handle_middle"/>
+            <child link="depth_camera_link"/>
+            <origin xyz="0.03 0 0.15" rpy="0 0 0"/>
+        </joint>
+        
+        <link name="depth_camera_link">
+            <visual>
+                <geometry>
+                    <box size= "0.005 0.09 0.025"/>
+                </geometry>
+                <material name="material_black"/>
+            </visual>
+        </link>
+        <gazebo reference="depth_camera_link">
+        <material>Gazebo/Black</material>
+        </gazebo>
+
+    <!-- Gazebo depth sensor + ROS2 plugin -->
+    <gazebo reference="depth_camera_link">
+    <sensor name="depth_cam" type="depth">
+        <update_rate>30</update_rate>
+        <pose>0 0 0 0 0 0</pose>
+        <camera>
+        <horizontal_fov>1.2789</horizontal_fov>
+        <vertical_fov>0.873</vertical_fov>
+        <image><width>1640</width><height>1232</height><format>R8G8B8</format></image>
+        <clip><near>0.02</near><far>10.0</far></clip>
+        </camera>
+
+        <!-- ⬇️ use the general camera plugin; it will publish depth + point cloud -->
+        <plugin name="depth_cam_controller" filename="libgazebo_ros_camera.so">
+        <ros>
+            <!-- tweak names as you like -->
+            <remapping>image:=/camera/depth/image_raw</remapping>
+            <remapping>camera_info:=/camera/depth/camera_info</remapping>
+            <remapping>points:=/camera/points</remapping>
+        </ros>
+        <frame_name>depth_camera_link_optical</frame_name>
+
+        <!-- Optional (supported by the camera plugin when sensor type=depth) -->
+        <depth_image_topic_name>image</depth_image_topic_name>
+        <point_cloud_topic_name>points</point_cloud_topic_name>
+        <point_cloud_cutoff>0.05</point_cloud_cutoff>
+        </plugin>
+    </sensor>
+    </gazebo>
+</robot>
