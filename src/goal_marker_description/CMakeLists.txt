@@ -5,28 +5,43 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# find dependencies
 find_package(ament_cmake REQUIRED)
-# uncomment the following section in order to fill in
-# further dependencies manually.
-# find_package(<dependency> REQUIRED)
+find_package(gazebo_ros REQUIRED)
+find_package(xacro REQUIRED)
+find_package(robot_state_publisher REQUIRED)
+
+# Install models directory
+install(
+  DIRECTORY models/
+  DESTINATION share/${PROJECT_NAME}/models
+  USE_SOURCE_PERMISSIONS
+)
+
+# Explicitly install specific files to avoid symlinks
+install(
+  FILES models/goal_marker/materials/scripts/chassis_pattern.material
+  DESTINATION share/${PROJECT_NAME}/models/goal_marker/materials/scripts
+)
+install(
+  FILES models/goal_marker/materials/textures/pattern.png
+  DESTINATION share/${PROJECT_NAME}/models/goal_marker/materials/textures
+)
+install(
+  FILES models/goal_marker/model.sdf
+  DESTINATION share/${PROJECT_NAME}/models/goal_marker
+)
+
+# Install launch files
+install(
+  DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/launch
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # comment the line when this package is in a git repo and when
-  # a copyright and license is added to all source files
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
-
-install(DIRECTORY
-urdf
-launch
-  DESTINATION share/${PROJECT_NAME}
-)
 
 ament_package()

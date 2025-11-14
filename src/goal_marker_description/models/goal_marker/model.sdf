@@ -1,0 +1,223 @@
+<sdf version='1.7'>
+  <model name='goal_marker'>
+    <link name='base_link'>
+      <inertial>
+        <pose>0.4 0 0.25 0 -0 0</pose> <!-- Kept the same as previous -->
+        <mass>0.6</mass>
+        <inertia>
+          <ixx>0.0508333</ixx> <!-- Kept the same -->
+          <ixy>0</ixy>
+          <ixz>0.015</ixz>
+          <iyy>0.0758333</iyy>
+          <iyz>0</iyz>
+          <izz>0.0353167</izz>
+        </inertia>
+      </inertial>
+      <collision name='base_link_fixed_joint_lump__chassis_collision'>
+        <pose>0.4 0 0.25 0 -0 0</pose> <!-- Kept the same -->
+        <geometry>
+          <box>
+            <size>0.8 0.5 0.5</size> <!-- Dimensions unchanged -->
+          </box>
+        </geometry>
+        <surface>
+          <contact>
+            <ode/>
+          </contact>
+          <friction>
+            <ode/>
+          </friction>
+        </surface>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__front_caster_collision_1'>
+        <pose>0.75 0 0 0 -0 0</pose> <!-- Moved caster more front (from 0.64 to 0.75) -->
+        <geometry>
+          <sphere>
+            <radius>0.1</radius> <!-- Increased radius from 0.05 to 0.1 to match wheel radius and fill offset -->
+          </sphere>
+        </geometry>
+        <surface>
+          <contact>
+            <ode/>
+          </contact>
+          <friction>
+            <ode/>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="base_link_fixed_joint_lump__chassis_visual_visual">
+        <pose>0.4 0 0.25 0 -0 0</pose>
+        <geometry>
+          <box>
+            <size>0.8 0.5 0.5</size>
+          </box>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://goal_marker/materials/scripts/chassis_pattern.material</uri>
+            <name>goal_marker/ChassisPattern</name>
+          </script>
+        </material>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__front_caster_visual_1'>
+        <pose>0.75 0 0 0 -0 0</pose> <!-- Moved caster more front (from 0.64 to 0.75) -->
+        <geometry>
+          <sphere>
+            <radius>0.1</radius> <!-- Increased radius from 0.05 to 0.1 to match wheel radius and fill offset -->
+          </sphere>
+        </geometry>
+        <material>
+          <script>
+            <name>Gazebo/Black</name>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+          </script>
+        </material>
+      </visual>
+    </link>
+    <joint name='left_wheel_joint' type='revolute'>
+      <pose relative_to='base_link'>0 0.25 0 -1.5708 0 0</pose> <!-- Adjusted y from 0.225 to 0.25 to stick to the outer side (width 0.5m, outer edge at 0.25m) -->
+      <parent>base_link</parent>
+      <child>left_wheel</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1e+16</lower>
+          <upper>1e+16</upper>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='left_wheel'>
+      <pose relative_to='left_wheel_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.0003</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0003</iyy>
+          <iyz>0</iyz>
+          <izz>0.0005</izz>
+        </inertia>
+      </inertial>
+      <collision name='left_wheel_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <cylinder>
+            <length>0.04</length>
+            <radius>0.1</radius> <!-- Radius unchanged as per instructions -->
+          </cylinder>
+        </geometry>
+        <surface>
+          <contact>
+            <ode/>
+          </contact>
+          <friction>
+            <ode/>
+          </friction>
+        </surface>
+      </collision>
+      <visual name='left_wheel_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <cylinder>
+            <length>0.04</length>
+            <radius>0.1</radius> <!-- Radius unchanged as per instructions -->
+          </cylinder>
+        </geometry>
+        <material>
+          <script>
+            <name>Gazebo/Grey</name>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+          </script>
+        </material>
+      </visual>
+    </link>
+    <joint name='right_wheel_joint' type='revolute'>
+      <pose relative_to='base_link'>0 -0.25 0 1.5708 -0 0</pose> <!-- Adjusted y from -0.225 to -0.25 to stick to the outer side (width 0.5m, outer edge at -0.25m) -->
+      <parent>base_link</parent>
+      <child>right_wheel</child>
+      <axis>
+        <xyz>0 0 -1</xyz>
+        <limit>
+          <lower>-1e+16</lower>
+          <upper>1e+16</upper>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='right_wheel'>
+      <pose relative_to='right_wheel_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 -0 0</pose>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.0003</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0003</iyy>
+          <iyz>0</iyz>
+          <izz>0.0005</izz>
+        </inertia>
+      </inertial>
+      <collision name='right_wheel_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <cylinder>
+            <length>0.04</length>
+            <radius>0.1</radius> <!-- Radius unchanged as per instructions -->
+          </cylinder>
+        </geometry>
+        <surface>
+          <contact>
+            <ode/>
+          </contact>
+          <friction>
+            <ode/>
+          </friction>
+        </surface>
+      </collision>
+      <visual name='right_wheel_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <cylinder>
+            <length>0.04</length>
+            <radius>0.1</radius> <!-- Radius unchanged as per instructions -->
+          </cylinder>
+        </geometry>
+        <material>
+          <script>
+            <name>Gazebo/Grey</name>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+          </script>
+        </material>
+      </visual>
+    </link>
+    <static>0</static>
+    <plugin name='goal_diff_drive' filename='libgazebo_ros_diff_drive.so'>
+      <ros>
+        <namespace>/goal_marker</namespace>
+        <remapping>cmd_vel:=/goal_marker/cmd_vel</remapping>
+        <remapping>odom:=/goal_marker/odom</remapping>
+      </ros>
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>0.5</wheel_separation> <!-- Adjusted to match outer wheel placement (0.5m width) -->
+      <wheel_diameter>0.2</wheel_diameter> <!-- Unchanged for radius 0.1m -->
+      <max_wheel_torque>20</max_wheel_torque>
+      <max_wheel_acceleration>5.0</max_wheel_acceleration>
+      <publish_odom>1</publish_odom>
+      <publish_wheel_tf>0</publish_wheel_tf>
+      <publish_odom_tf>0</publish_odom_tf>
+      <odometry_frame>goal_odom</odometry_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+    </plugin>
+  </model>
+</sdf>

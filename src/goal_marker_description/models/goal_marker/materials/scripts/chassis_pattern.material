@@ -1,0 +1,14 @@
+material goal_marker/ChassisPattern
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture ../textures/pattern.png  // Relative path from scripts to textures
+        scale 0.25 0.25
+      }
+    }
+  }
+}
