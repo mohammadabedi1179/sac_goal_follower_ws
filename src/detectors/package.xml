@@ -3,24 +3,30 @@
 <package format="3">
   <name>detectors</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Detectos for Follower Robot</description>
   <maintainer email="mohammadabedi1179@gmail.com">mohammadabedi</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache-2.0</license>
 
+  <!-- Pure Python package build -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <!-- Runtime deps -->
   <depend>rclpy</depend>
+  <depend>cv_bridge</depend>
+  <depend>message_filters</depend>
+  <depend>stereo_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>image_transport</depend>
+  <depend>detectors_msgs</depend>
 
 
+  <!-- Tests (unchanged) -->
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>
   <test_depend>python3-pytest</test_depend>
 
-  <depend>cv_bridge</depend>
-  <depend>message_filters</depend>
-  <depend>stereo_msgs</depend>  <!-- For DisparityImage msg -->
-  <depend>sensor_msgs</depend>
-  <depend>image_transport</depend>  <!-- Optional for efficiency -->
-  
   <export>
     <build_type>ament_python</build_type>
   </export>

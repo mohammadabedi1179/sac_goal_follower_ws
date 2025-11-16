@@ -1,220 +1,165 @@
-# sac_goal_follower/goal_env.py
-import time, math, numpy as np, cv2
+import time
+import math
+import numpy as np
+import subprocess
+
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import SingleThreadedExecutor
+
 from gymnasium import Env, spaces
 from geometry_msgs.msg import Twist
-from sensor_msgs.msg import Image
 from nav_msgs.msg import Odometry
-from cv_bridge import CvBridge
-from gazebo_msgs.srv import SetEntityState
-from gazebo_msgs.msg import EntityState
-import subprocess
-from message_filters import Subscriber, ApproximateTimeSynchronizer
 
-def _wrap(a):
+from detectors_msgs.msg import GoalMarkerState  # high-level marker state
+
+
+def _wrap(a: float) -> float:
     while a > math.pi:
-        a -= 2 * math.pi
+        a -= 2.0 * math.pi
     while a < -math.pi:
-        a += 2 * math.pi
+        a += 2.0 * math.pi
     return a
 
 
 class _ROS(Node):
-    def __init__(self, cmd_topic, left_rgb_topic, right_rgb_topic, goal_odom_topic, robot_odom_topic):
+    """
+    Thin ROS2 wrapper for the SAC environment.
+
+    - Subscribes to GoalMarkerState (vision + depth results).
+    - Subscribes to robot & goal odometry.
+    - Publishes cmd_vel.
+    """
+
+    def __init__(
+        self,
+        cmd_topic: str,
+        goal_state_topic: str,
+        goal_odom_topic: str,
+        robot_odom_topic: str,
+    ):
         super().__init__("sac_goal_env_node")
+
+        # Publisher
         self.cmd_pub = self.create_publisher(Twist, cmd_topic, 10)
-        self.bridge = CvBridge()
-        self.left_rgb = None
-        self.right_rgb = None
-        self.disparity = None
-        self.width = None
-        self.goal_pose = None
-        self.robot_pose = None
-        self.last_left_stamp = None
-        self.last_right_stamp = None
 
-        # --- Calibration parameters from left.yaml and right.yaml (new values)
-        self.K_left = np.array([[1360.02116, 0, 820.01429],
-                                [0, 1360.39793, 615.36189],
-                                [0, 0, 1]], np.float64)
-        self.D_left = np.array([-0.000154, 0.000171, 0.000019, -0.000004, 0.000000], np.float64)
+        # Buffers
+        self.goal_state: GoalMarkerState | None = None
+        self.goal_pose = None  # (x, y)
+        self.robot_pose = None  # (x, y, yaw)
 
-        self.K_right = np.array([[1359.80732, 0, 820.24415],
-                                 [0, 1360.18615, 615.33162],
-                                 [0, 0, 1]], np.float64)
-        self.D_right = np.array([-0.000661, 0.001202, -0.000040, 0.000068, 0.000000], np.float64)
-
-        # Hard-coded rectification (R1, R2) and projection (P1, P2) from YAML
-        self.R1 = np.array([[0.99978141, -0.00025455, -0.02090629],
-                            [0.00025495, 0.99999997, 0.00001618],
-                            [0.02090629, -0.00002151, 0.99978144]], np.float64)  # From left.yaml rectification_matrix
-        self.P1 = np.array([[1415.70791, 0, 826.43549, 0],
-                            [0, 1415.70791, 615.33393, 0],
-                            [0, 0, 1, 0]], np.float64)  # From left.yaml projection_matrix
-
-        self.R2 = np.array([[0.99989957, -0.00024387, 0.01416982],
-                            [0.00024414, 0.99999997, -0.00001712],
-                            [-0.01416982, 0.00002058, 0.9998996]], np.float64)  # From right.yaml rectification_matrix
-        self.P2 = np.array([[1415.70791, 0, 826.43549, 121.09012],
-                            [0, 1415.70791, 615.33393, 0],
-                            [0, 0, 1, 0]], np.float64)  # From right.yaml projection_matrix
-
-        self.map_ready = False
-        self.map1x = self.map1y = self.map2x = self.map2y = None
-
-        # subs
-        self.left_sub = Subscriber(self, Image, left_rgb_topic)  # Now '/depth_cam/left/image_raw'
-        self.right_sub = Subscriber(self, Image, right_rgb_topic)  # Now '/depth_cam/right/image_raw'
-        self.ts = ApproximateTimeSynchronizer([self.left_sub, self.right_sub],
-                                            queue_size=5, slop=0.05)
-        self.ts.registerCallback(self._stereo_cb)
+        # Subscriptions
+        self.create_subscription(
+            GoalMarkerState,
+            goal_state_topic,
+            self._goal_state_cb,
+            10,
+        )
         self.create_subscription(Odometry, goal_odom_topic, self._goal_odom_cb, 10)
-        self.create_subscription(Odometry, robot_odom_topic, self._robot_odom_cb, 10)
-
-        # service client
-        self.reset_cli = self.create_client(SetEntityState, "/set_entity_state")
-        for _ in range(10):
-            if self.reset_cli.wait_for_service(timeout_sec=1.0):
-                break
-            self.get_logger().warn("/set_entity_state service not available, waiting...")
-        if not self.reset_cli.service_is_ready():
-            self.get_logger().error("Failed to connect to /set_entity_state service")
-
-    # === helpers ===
-    def _init_rect_maps(self, shape):
-        if self.map_ready:
-            return
-        h, w = shape
-        # Use hard-coded R1, P1, R2, P2 instead of computing via stereoRectify
-        self.map1x, self.map1y = cv2.initUndistortRectifyMap(
-            self.K_left, self.D_left, self.R1, self.P1[:3, :3], (w, h), cv2.CV_32FC1
+        self.create_subscription(
+            Odometry, robot_odom_topic, self._robot_odom_cb, 10
         )
-        self.map2x, self.map2y = cv2.initUndistortRectifyMap(
-            self.K_right, self.D_right, self.R2, self.P2[:3, :3], (w, h), cv2.CV_32FC1
-        )
-        self.fx_rect = self.P1[0, 0]
-        self.cx_rect = self.P1[0, 2]
-        self.cy_rect = self.P1[1, 2]
-        self.baseline_rect = -self.P2[0, 3] / self.fx_rect  # Matches ~0.0855 m
-        self.map_ready = True
-        self.get_logger().info(f"Stereo maps ready: fx={self.fx_rect:.2f}, baseline={self.baseline_rect:.4f} m")
 
-    def _stereo_cb(self, left_msg, right_msg):
-        try:
-            self.left_rgb = self.bridge.imgmsg_to_cv2(left_msg, 'bgr8')
-            self.right_rgb = self.bridge.imgmsg_to_cv2(right_msg, 'bgr8')
-            self._compute_disparity(self.left_rgb, self.right_rgb)
-        except Exception as e:
-            self.get_logger().warn(f"Stereo cb err: {e}")
+    # --- Callbacks ---
 
+    def _goal_state_cb(self, msg: GoalMarkerState):
+        self.goal_state = msg
 
-    def _compute_disparity(self, left_img, right_img):
-        left_gray = cv2.cvtColor(left_img, cv2.COLOR_BGR2GRAY)
-        right_gray = cv2.cvtColor(right_img, cv2.COLOR_BGR2GRAY)
-        self._init_rect_maps(left_gray.shape)
-
-        left_rect = cv2.remap(left_gray, self.map1x, self.map1y, cv2.INTER_LINEAR)
-        right_rect = cv2.remap(right_gray, self.map2x, self.map2y, cv2.INTER_LINEAR)
-
-        left_rect = cv2.equalizeHist(left_rect)
-        right_rect = cv2.equalizeHist(right_rect)
-
-        stereo = cv2.StereoSGBM_create(
-            minDisparity=0,
-            numDisparities=16 * 16,
-            blockSize=5,
-            P1=8 * 5 ** 2,
-            P2=32 * 5 ** 2,
-            uniquenessRatio=8,
-            speckleWindowSize=80,
-            speckleRange=16,
-            disp12MaxDiff=1,
-            mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY,
-        )
-        disp = stereo.compute(left_rect, right_rect).astype(np.float32) / 16.0
-        disp[disp < 0] = -1.0
-        self.disparity = cv2.medianBlur(disp, 5)
-        return self.disparity
-
-    def _goal_odom_cb(self, msg):
+    def _goal_odom_cb(self, msg: Odometry):
         p = msg.pose.pose.position
         self.goal_pose = (p.x, p.y)
 
-    def _robot_odom_cb(self, msg):
+    def _robot_odom_cb(self, msg: Odometry):
         p = msg.pose.pose.position
         o = msg.pose.pose.orientation
-        yaw = math.atan2(2 * (o.w * o.z + o.x * o.y), 1 - 2 * (o.y * o.y + o.z * o.z))
+        yaw = math.atan2(
+            2.0 * (o.w * o.z + o.x * o.y),
+            1.0 - 2.0 * (o.y * o.y + o.z * o.z),
+        )
         self.robot_pose = (p.x, p.y, yaw)
 
-    def send_cmd(self, v, w):
+    # --- Helpers ---
+
+    def send_cmd(self, v: float, w: float) -> None:
         tw = Twist()
         tw.linear.x = float(v)
         tw.angular.z = float(w)
         self.cmd_pub.publish(tw)
 
-    def reset_entity(self, name, x, y, z=0.0, yaw=0.0):
-        state = EntityState()
-        state.name = name
-        state.pose.position.x = float(x)
-        state.pose.position.y = float(y)
-        state.pose.position.z = float(z)
-        qz = math.sin(yaw / 2.0)
-        qw = math.cos(yaw / 2.0)
-        state.pose.orientation.z = qz
-        state.pose.orientation.w = qw
-        req = SetEntityState.Request()
-        req.state = state
-        future = self.reset_cli.call_async(req)
-        return future
-
 
 class GoalFollowerEnv(Env):
     metadata = {"render_modes": []}
 
-    def __init__(self,
-                 cmd_topic="/cmd_vel",
-                 left_rgb_topic='/depth_cam/left/image_raw',  # Updated to match remapped topic
-                 right_rgb_topic='/depth_cam/right/image_raw',  # Updated to match remapped topic    
-                 goal_odom_topic="/goal_marker/odom",
-                 robot_odom_topic="/odom",
-                 wheel_radius=0.10,
-                 wheel_separation=0.35,
-                 fov_deg=62.2,
-                 min_blob_area=300,
-                 dt=0.1,
-                 lost_timeout=5.0,
-                 success_radius=0.35,
-                 time_limit=20.0,
-                 c_time=0.01,
-                 c_dist=0.1,
-                 c_lost=0.1,
-                 R_goal=50.0):
+    def __init__(
+        self,
+        cmd_topic="/follower_robot/cmd_vel",
+        goal_state_topic="/follower_robot/depth_cam/goal_marker_state",
+        goal_odom_topic="/goal_marker/odom",
+        robot_odom_topic="/follower_robot/odom",
+        wheel_radius=0.10,
+        wheel_separation=0.35,
+        dt=0.1,
+        lost_timeout=5.0,
+        success_radius=0.35,
+        time_limit=20.0,
+        c_time=0.01,
+        c_dist=0.1,
+        c_lost=0.1,
+        R_goal=50.0,
+    ):
         super().__init__()
-        self.action_space = spaces.Box(low=np.array([-6.0, -6.0], np.float32),
-                                       high=np.array([+6.0, +6.0], np.float32))
-        self.observation_space = spaces.Box(low=np.array([0.0, -math.pi], np.float32),
-                                            high=np.array([np.inf, math.pi], np.float32))
+
+        # --------- ACTION SPACE (FIXED RANGE) ----------
+        # SAC will output actions in [-1, 1]. We map them to
+        # physical linear and angular velocities.
+        self.v_max = 0.7        # [m/s] ~ 2.5 km/h (safe)
+        self.w_max = 2.0        # [rad/s]
+        self.action_low = np.array([-1.0, -1.0], dtype=np.float32)
+        self.action_high = np.array([1.0, 1.0], dtype=np.float32)
+
+        self.action_space = spaces.Box(
+            low=self.action_low,
+            high=self.action_high,
+            dtype=np.float32,
+        )
+
+        # Observation: [distance_to_goal, bearing]
+        self.observation_space = spaces.Box(
+            low=np.array([0.0, -math.pi], np.float32),
+            high=np.array([np.inf, math.pi], np.float32),
+        )
+
+        # Kinematic params kept if needed later
         self.r = wheel_radius
         self.L = wheel_separation
+
         self.dt = dt
         self.lost_timeout = lost_timeout
         self.success_radius = success_radius
         self.time_limit = time_limit
+
+        # Reward parameters
         self.c_time = c_time
         self.c_dist = c_dist
         self.c_lost = c_lost
         self.R_goal = R_goal
-        self.min_blob_area = min_blob_area
 
-        # nominal (will be overwritten once maps ready)
-        self.fx = 1360.89
-        self.cx = 820.41
-        self.cy = 616.28
-        self.baseline = 0.0855
+        # Extra reward shaping
+        self.c_angle = 0.05     # penalty on |bearing|
+        self.c_progress = 1.0   # reward for reducing distance
+        self.c_ctrl = 0.01      # control effort penalty
 
-        self.ros = _ROS(cmd_topic, left_rgb_topic, right_rgb_topic, goal_odom_topic, robot_odom_topic)
+        # Action smoothing (low-pass filter on v, w)
+        self.smooth_alpha = 0.2   # 0 -> no movement, 1 -> no smoothing
+        self._prev_v_cmd = 0.0
+        self._prev_w_cmd = 0.0
+
+        self.ros = _ROS(
+            cmd_topic=cmd_topic,
+            goal_state_topic=goal_state_topic,
+            goal_odom_topic=goal_odom_topic,
+            robot_odom_topic=robot_odom_topic,
+        )
         self.exec = SingleThreadedExecutor()
         self.exec.add_node(self.ros)
 
@@ -224,152 +169,254 @@ class GoalFollowerEnv(Env):
         self._last_goal_pose = None
         self._visible = False
 
-    def _spin(self, seconds):
+        # For progress-based reward
+        self._prev_dist = None
+
+    # --- ROS spin helper ---
+
+    def _spin(self, seconds: float) -> None:
         end = time.time() + seconds
         while time.time() < end:
             self.exec.spin_once(timeout_sec=0.001)
 
-    def _detect(self):
-        img = self.ros.left_rgb
-        if img is None:
-            return False, None, None
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        mask1 = cv2.inRange(hsv, (0, 120, 70), (10, 255, 255))
-        mask2 = cv2.inRange(hsv, (170, 120, 70), (180, 255, 255))
-        mask = cv2.bitwise_or(mask1, mask2)
-        mask = cv2.medianBlur(mask, 5)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if not contours:
-            self.ros.get_logger().info("No red contours detected")
-            return False, None, None
-        largest = max(contours, key=cv2.contourArea)
-        if cv2.contourArea(largest) < self.min_blob_area:
-            return False, None, None
-        x, y, w, h = cv2.boundingRect(largest)
-        cx, cy = x + w // 2, y + h // 2
-        self.ros.get_logger().info(f"Detected red marker at ({cx}, {cy}) area={cv2.contourArea(largest)}")
-        return True, cx, cy
+    # --- Observation construction ---
 
-    def _bearing(self, cx_px):
-        fx = self.ros.fx_rect if hasattr(self.ros, "fx_rect") else self.fx
-        cx0 = self.ros.cx_rect if hasattr(self.ros, "cx_rect") else self.cx
-        return math.atan2((cx_px - cx0), fx)
+    def _obs(self, default: bool = False):
+        """
+        Build observation [distance, bearing].
 
-    def _distance(self, cx, cy):
-        if self.ros.disparity is None:
-            return 7.08
-        H, W = self.ros.disparity.shape
-        x0, y0 = int(cx), int(cy)
-        x1, y1 = max(0, x0 - 5), max(0, y0 - 5)
-        x2, y2 = min(W, x0 + 6), min(H, y0 + 6)
-        patch = self.ros.disparity[y1:y2, x1:x2]
-        valid = patch[patch > 1.0]
-        if valid.size < 10:
-            self.ros.get_logger().warn(f"Too few valid disparities near ({cx},{cy})")
-            return 7.08
-        disp = float(np.median(valid))
-        fx = getattr(self.ros, "fx_rect", self.fx)
-        baseline = getattr(self.ros, "baseline_rect", self.baseline)
-        depth = (baseline * fx) / disp
-        if 0.05 < depth < 50.0 and math.isfinite(depth):
-            return depth
-        self.ros.get_logger().warn(f"Bad depth from disp={disp:.2f}, fallback")
-        return 7.08
+        If default=True (used at reset), just return last valid obs (no new state).
+        """
+        if default:
+            return self._last_obs_valid.copy()
 
-    def _obs(self, default=False):
-        vis, cx, cy = self._detect()
-        if vis:
+        st = self.ros.goal_state
+
+        # Assume not visible by default; we will set True below if needed
+        self._visible = False
+
+        # ---- CASE 1: directly visible from perception node ----
+        if st is not None and st.visible:
             self._visible = True
             self._last_seen = time.time()
-            b = self._bearing(cx)
-            d = self._distance(cx, cy)
+
+            d = float(st.depth_m)
+            b = _wrap(float(st.bearing_rad))
+
+            # Estimate world-frame goal pose from robot pose
             if self.ros.robot_pose is not None:
                 rx, ry, ryaw = self.ros.robot_pose
                 gx = rx + d * math.cos(ryaw + b)
                 gy = ry + d * math.sin(ryaw + b)
                 self._last_goal_pose = (gx, gy)
-            obs = np.array([d, _wrap(b)], np.float32)
+
+            obs = np.array([d, b], np.float32)
             self._last_obs_valid = obs
             return obs
-        if self._last_goal_pose and self.ros.robot_pose:
+
+        # ---- CASE 2: not visible; propagate last known world pose using odom ----
+        if self._last_goal_pose is not None and self.ros.robot_pose is not None:
             rx, ry, ryaw = self.ros.robot_pose
             dx = self._last_goal_pose[0] - rx
             dy = self._last_goal_pose[1] - ry
-            dist = math.sqrt(dx**2 + dy**2)
+            dist = math.sqrt(dx * dx + dy * dy)
             bearing = _wrap(math.atan2(dy, dx) - ryaw)
             obs = np.array([dist, bearing], np.float32)
             self._last_obs_valid = obs
             return obs
+
+        # ---- CASE 3: nothing better, return last valid obs ----
         return self._last_obs_valid.copy()
 
-    def _reset_entity_with_retry(self, name, x, y, z=0.0, yaw=0.0, max_attempts=3):
+    # --- Gazebo reset helper (CLI, robust) ---
+
+    def _reset_entity_with_retry(
+        self,
+        name: str,
+        x: float,
+        y: float,
+        z: float = 0.0,
+        yaw: float = 0.0,
+        max_attempts: int = 3,
+    ) -> bool:
         for attempt in range(max_attempts):
-            self.ros.get_logger().info(f"[{name}] Reset attempt {attempt+1}/{max_attempts}")
-            qz, qw = math.sin(yaw/2.0), math.cos(yaw/2.0)
+            self.ros.get_logger().info(
+                f"[{name}] Reset attempt {attempt + 1}/{max_attempts}"
+            )
+            qz, qw = math.sin(yaw / 2.0), math.cos(yaw / 2.0)
             cmd = [
-                "ros2", "service", "call", "/set_entity_state",
+                "ros2",
+                "service",
+                "call",
+                "/set_entity_state",
                 "gazebo_msgs/srv/SetEntityState",
-                f"{{state: {{name: '{name}', pose: {{position: {{x: {x}, y: {y}, z: {z}}}, orientation: {{z: {qz}, w: {qw}}}}}}}}}"
+                (
+                    "{state: {name: '"
+                    + name
+                    + "', pose: {position: {x: "
+                    + str(x)
+                    + ", y: "
+                    + str(y)
+                    + ", z: "
+                    + str(z)
+                    + "}, orientation: {z: "
+                    + str(qz)
+                    + ", w: "
+                    + str(qw)
+                    + "}}}}"
+                ),
             ]
             try:
-                out = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                out = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
                 if "success: True" in out.stdout or "success=True" in out.stdout:
-                    self.ros.get_logger().info(f"[{name}] Reset confirmed by CLI")
+                    self.ros.get_logger().info(
+                        f"[{name}] Reset confirmed by CLI"
+                    )
                     return True
             except subprocess.TimeoutExpired:
-                self.ros.get_logger().warn(f"[{name}] CLI call timed out")
-        self.ros.get_logger().error(f"[{name}] Failed to reset after {max_attempts}")
+                self.ros.get_logger().warn(
+                    f"[{name}] CLI call timed out"
+                )
+        self.ros.get_logger().error(
+            f"[{name}] Failed to reset after {max_attempts}"
+        )
         return False
+
+    # --- Gym API: reset ---
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self._t0 = time.time()
-        self._last_seen = time.time()
+        now = time.time()
+        self._t0 = now
+        self._last_seen = now
         self._visible = False
         self._last_goal_pose = None
+
+        # Stop robot & reset smoothing state
+        self._prev_v_cmd = 0.0
+        self._prev_w_cmd = 0.0
+
+        # Reset previous distance for progress-based reward
+        self._prev_dist = None
+
         self.ros.send_cmd(0.0, 0.0)
+
+        # Reset robot and goal_marker in Gazebo
         self._reset_entity_with_retry("my_robot", 0.0, 0.0, 0.3, 0.7854)
         self._reset_entity_with_retry("goal_marker", 5.0, 5.0, 0.75, 0.0)
+
+        # Let things settle
         self._spin(0.5)
+
         obs = self._obs(default=True)
-        self.ros.get_logger().info(f"Episode reset completed: initial obs={obs}")
+        # Initialize _prev_dist from initial observation
+        self._prev_dist = float(obs[0])
+
+        self.ros.get_logger().info(
+            f"Episode reset completed: initial obs={obs}"
+        )
         return obs, {}
 
+    # --- Gym API: step ---
+
     def step(self, action):
-        omega_l = float(np.clip(action[0], -6.0, 6.0))
-        omega_r = float(np.clip(action[1], -6.0, 6.0))
-        v = self.r * (omega_l + omega_r) / 2.0
-        w = self.r * (omega_r - omega_l) / self.L
-        self.ros.send_cmd(np.clip(v, -1.3889, 1.3889), w)
+        # ---- ACTION RANGE & SMOOTHING ----
+        # 1) Clip SAC outputs to [-1, 1]
+        a = np.clip(action, self.action_low, self.action_high).astype(np.float32)
+        a_v, a_w = float(a[0]), float(a[1])
+
+        # 2) Map to physical velocities
+        v_des = a_v * self.v_max
+        w_des = a_w * self.w_max
+
+        # 3) Smooth commands
+        v_cmd = (1.0 - self.smooth_alpha) * self._prev_v_cmd + self.smooth_alpha * v_des
+        w_cmd = (1.0 - self.smooth_alpha) * self._prev_w_cmd + self.smooth_alpha * w_des
+
+        self._prev_v_cmd = v_cmd
+        self._prev_w_cmd = w_cmd
+
+        # 4) Send to robot
+        self.ros.send_cmd(v_cmd, w_cmd)
+
+        # Step ROS
         self._spin(self.dt)
+
+        # Build observation
         obs = self._obs()
-        dist, bearing = obs
+        dist, bearing = float(obs[0]), float(obs[1])
+
+        # Ground-truth distance from odom (for logging)
         real_dist = float("inf")
-        if self.ros.robot_pose and self.ros.goal_pose:
+        if self.ros.robot_pose is not None and self.ros.goal_pose is not None:
             rx, ry, _ = self.ros.robot_pose
             gx, gy = self.ros.goal_pose
-            real_dist = math.sqrt((gx - rx)**2 + (gy - ry)**2)
+            real_dist = math.sqrt((gx - rx) ** 2 + (gy - ry) ** 2)
 
-        reward = -self.c_time * self.dt
-        reward -= self.c_dist * dist if self._visible else self.c_lost * self.dt
+        # --------- REWARD SHAPING (FIXED) ----------
+        # Progress term: positive if distance is reduced
+        if self._prev_dist is None:
+            prev_dist = dist
+        else:
+            prev_dist = self._prev_dist
 
-        term = trunc = False
+        progress = prev_dist - dist  # >0 if moving closer
+        self._prev_dist = dist
+
+        reward = 0.0
+
+        # Small time penalty to encourage faster completion
+        reward -= self.c_time * self.dt
+
+        if self._visible:
+            # Reward for getting closer
+            reward += self.c_progress * progress
+
+            # Penalize being far
+            reward -= self.c_dist * dist
+
+            # Penalize large bearing
+            reward -= self.c_angle * abs(bearing)
+        else:
+            # If marker is not visible, penalize per unit time
+            reward -= self.c_lost * self.dt
+
+        # Penalize large control effort (encourage smooth / small motions)
+        reward -= self.c_ctrl * (abs(v_cmd) + abs(w_cmd))
+
+        term = False
+        trunc = False
         reason = ""
+
+        # Success: close enough to the goal while visible
         if self._visible and dist <= self.success_radius:
             reward += self.R_goal
             term = True
             reason = "Reached goal"
+
+        # Failure: lost marker for too long
         if (time.time() - self._last_seen) >= self.lost_timeout:
+            reward -= 0.5 * self.R_goal  # strong negative for losing the goal
             term = True
             reason = "Lost marker timeout"
+
+        # Truncation: episode time limit
         if (time.time() - self._t0) >= self.time_limit:
             trunc = True
             reason = "Time limit reached"
 
         self.ros.get_logger().info(
-            f"Step: dist={dist:.2f}, real_dist={real_dist:.2f}, bearing={bearing:.2f}, "
-            f"visible={self._visible}, reward={reward:.2f}, term={term}, trunc={trunc}, reason={reason}"
+            f"Step: dist={dist:.2f}, real_dist={real_dist:.2f}, "
+            f"bearing={bearing:.2f}, visible={self._visible}, "
+            f"v_cmd={v_cmd:.2f}, w_cmd={w_cmd:.2f}, "
+            f"reward={reward:.2f}, term={term}, trunc={trunc}, reason={reason}"
         )
+
         return obs, float(reward), term, trunc, {"reason": reason}
 
     def close(self):
