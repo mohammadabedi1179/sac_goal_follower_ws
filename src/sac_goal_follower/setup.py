@@ -29,6 +29,7 @@ setup(
         'console_scripts': [
             'train_sac = sac_goal_follower.train_sac:main',
             'test_disparity = sac_goal_follower.test_disparity:main',
+            'test_sac = sac_goal_follower.test_sac:main',
         ],
     },
 )

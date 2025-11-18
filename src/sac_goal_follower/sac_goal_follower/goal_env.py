@@ -112,8 +112,8 @@ class GoalFollowerEnv(Env):
         # --------- ACTION SPACE (FIXED RANGE) ----------
         # SAC will output actions in [-1, 1]. We map them to
         # physical linear and angular velocities.
-        self.v_max = 0.7        # [m/s] ~ 2.5 km/h (safe)
-        self.w_max = 2.0        # [rad/s]
+        self.v_max = 0.5        # [m/s] ~ 2.5 km/h (safe)
+        self.w_max = 1.5        # [rad/s]
         self.action_low = np.array([-1.0, -1.0], dtype=np.float32)
         self.action_high = np.array([1.0, 1.0], dtype=np.float32)
 
@@ -146,7 +146,7 @@ class GoalFollowerEnv(Env):
 
         # Extra reward shaping
         self.c_angle = 0.05     # penalty on |bearing|
-        self.c_progress = 1.0   # reward for reducing distance
+        self.c_progress = 5.0   # reward for reducing distance
         self.c_ctrl = 0.01      # control effort penalty
 
         # Action smoothing (low-pass filter on v, w)
@@ -401,7 +401,7 @@ class GoalFollowerEnv(Env):
 
         # Failure: lost marker for too long
         if (time.time() - self._last_seen) >= self.lost_timeout:
-            reward -= 0.5 * self.R_goal  # strong negative for losing the goal
+            reward -= 2 * self.R_goal  # strong negative for losing the goal
             term = True
             reason = "Lost marker timeout"
 
@@ -421,11 +421,21 @@ class GoalFollowerEnv(Env):
 
     def close(self):
         try:
+            # Try to stop the robot nicely
             self.ros.send_cmd(0.0, 0.0)
-            self.exec.shutdown()
-            self.ros.destroy_node()
         except Exception as e:
-            print(f"Error during close: {e}")
-        finally:
-            if rclpy.ok():
-                rclpy.shutdown()
+            print(f"Error sending stop cmd during close: {e}")
+
+        try:
+            # Shutdown executor first, then destroy node
+            if self.exec is not None:
+                self.exec.shutdown()
+        except Exception as e:
+            print(f"Error shutting down executor: {e}")
+
+        try:
+            if self.ros is not None:
+                self.ros.destroy_node()
+        except Exception as e:
+            print(f"Error destroying node: {e}")
+
