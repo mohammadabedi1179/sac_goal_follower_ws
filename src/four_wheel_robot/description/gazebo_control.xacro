@@ -20,8 +20,10 @@
 
         <wheel_separation>0.85</wheel_separation>
         <wheel_diameter>0.20</wheel_diameter>
-        <max_wheel_torque>8.0</max_wheel_torque>
-        <max_wheel_acceleration>1.5</max_wheel_acceleration>
+        <max_wheel_torque>30.0</max_wheel_torque>
+        <max_wheel_acceleration>30.0</max_wheel_acceleration>
+        <max_linear_speed>2.0</max_linear_speed>
+        <max_angular_speed>2.0</max_angular_speed>
 
 
         <command_topic>cmd_vel</command_topic>

@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- Macro that inject diff_drive plugin -->
+  <xacro:macro name="add_drive_plugins" params="">
+    <gazebo>
+      <plugin name="skid_drive" filename="libgazebo_ros_diff_drive.so">
+        <ros>
+          <namespace>/follower_robot</namespace>
+          <!--<remapping>cmd_vel:=/cmd_vel</remapping>-->
+          <!--<remapping>odom:=/odom</remapping>-->
+        </ros>
+        <num_wheel_pairs>2</num_wheel_pairs>
+        <!-- Left wheels -->
+        <left_joint>FL_joint</left_joint>
+        <left_joint>BL_joint</left_joint>
+
+        <!-- Right wheels -->
+        <right_joint>FR_joint</right_joint>
+        <right_joint>BR_joint</right_joint>
+
+        <wheel_separation>0.66108</wheel_separation>
+        <wheel_diameter>0.185</wheel_diameter>
+        <max_wheel_torque>50.0</max_wheel_torque>
+        <max_wheel_acceleration>30.0</max_wheel_acceleration>
+        <max_linear_speed>4.0</max_linear_speed>
+        <max_angular_speed>4.0</max_angular_speed>
+
+
+        <command_topic>cmd_vel</command_topic>
+        <odometry_topic>odom</odometry_topic>
+        <odometry_frame>odom</odometry_frame>
+        <robot_base_frame>base_link</robot_base_frame>
+
+        <publish_odom>true</publish_odom>
+        <publish_odom_tf>true</publish_odom_tf>
+        <publish_wheel_tf>true</publish_wheel_tf>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+</robot>

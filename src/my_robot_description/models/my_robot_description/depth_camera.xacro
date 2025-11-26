@@ -1,0 +1,174 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- Depth camera back link (box) -->
+  <joint name="depth_camera_back_joint" type="fixed">
+    <parent link="handle_middle"/>
+    <child link="depth_camera_back_link"/>
+    <origin xyz="0.015 0 0.13" rpy="0 0 0"/>
+  </joint>
+
+  <link name="depth_camera_back_link">
+    <visual>
+      <geometry>
+        <box size="0.0016 0.085 0.024"/>
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.0016 0.085 0.024"/>
+      </geometry>
+    </collision>
+    <xacro:inertial_box mass="0.05" x="0.0016" y="0.085" z="0.024">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </xacro:inertial_box>
+  </link>
+
+  <gazebo reference="depth_camera_back_link">
+    <material>Gazebo/White</material>
+  </gazebo>
+
+  <!-- Left camera cylinder -->
+  <joint name="left_camera_joint" type="fixed">
+    <parent link="depth_camera_back_link"/>
+    <child link="left_camera_link"/>
+    <origin xyz="0.0058 -0.036 0" rpy="0 0 0"/> <!-- Rotate to length along x (forward), baseline along y -->
+  </joint>
+
+  <link name="left_camera_link">
+    <visual>
+      <geometry>
+        <box size = "0.01 0.0155 0.0155"/> <!-- Length along x (forward) -->
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <box size = "0.01 0.0155 0.0155"/>
+      </geometry>
+    </collision>
+    <xacro:inertial_box mass="0.02" x="0.01" y="0.0155" z="0.0155">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </xacro:inertial_box>
+  </link>
+
+  <gazebo reference="left_camera_link">
+    <material>Gazebo/Black</material>
+    <sensor type="camera" name="left_camera">
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+      <update_rate>30</update_rate>
+      <camera>
+        <horizontal_fov>1.044815127601244</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.02</near>
+          <far>50.0</far>
+        </clip>
+        <!--<noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>-->
+      </camera>
+      <plugin name="left_camera_controller" filename="libgazebo_ros_camera.so">
+        <ros>
+          <namespace>/follower_robot</namespace>
+        </ros>
+        <camera_name>depth_cam/left</camera_name>
+        <frame_name>left_camera_link_optical</frame_name>
+        <!--<focal_length>1424.1969168622516</focal_length>
+        <cx>812.6941986083984</cx>
+        <cy>615.3056335449219</cy>
+        <cx_prime>812.6941986083984</cx_prime>
+        <hack_baseline>0.0</hack_baseline>-->
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <!-- Left optical frame (view from front flat base) -->
+  <joint name="left_camera_optical_joint" type="fixed">
+    <parent link="left_camera_link"/>
+    <child link="left_camera_link_optical"/>
+    <origin xyz="0.01 0 0" rpy="${-pi/2} 0 ${-pi/2}"/> <!-- Shift to front flat (+0.01 x), rotate for ROS optical convention -->
+  </joint>
+
+  <link name="left_camera_link_optical"/>
+
+  <!-- Right camera cylinder -->
+  <joint name="right_camera_joint" type="fixed">
+    <parent link="depth_camera_back_link"/>
+    <child link="right_camera_link"/>
+    <origin xyz="0.0058 0.036 0" rpy="0 0 0"/> <!-- Rotate to length along x (forward), baseline along y -->
+  </joint>
+
+  <link name="right_camera_link">
+    <visual>
+      <geometry>
+        <box size = "0.01 0.0155 0.0155"/> <!-- Length along x (forward) -->
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <box size = "0.01 0.0155 0.0155"/>
+      </geometry>
+    </collision>
+    <xacro:inertial_box mass="0.02" x="0.01" y="0.0155" z="0.0155">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </xacro:inertial_box>
+  </link>
+
+  <gazebo reference="right_camera_link">
+    <material>Gazebo/Black</material>
+    <sensor type="camera" name="right_camera">
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+      <update_rate>30</update_rate>
+      <camera>
+        <horizontal_fov>1.044815127601244</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.02</near>
+          <far>50.0</far>
+        </clip>
+        <!--<noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>-->
+      </camera>
+      <plugin name="right_camera_controller" filename="libgazebo_ros_camera.so">
+        <ros>
+          <namespace>/follower_robot</namespace>
+        </ros>
+        <camera_name>depth_cam/right</camera_name>  <!-- Sets prefix for topics: /depth_cam/right/image_raw and /depth_cam/right/camera_info -->
+        <frame_name>right_camera_link_optical</frame_name>
+        <!--<focal_length>1424.1969168622516</focal_length>
+        <cx>812.6941986083984</cx>
+        <cy>615.3056335449219</cy>
+        <cx_prime>812.6941986083984</cx_prime>-->
+        <hack_baseline>-0.071727</hack_baseline>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <!-- Right optical frame (view from front flat base) -->
+  <joint name="right_camera_optical_joint" type="fixed">
+    <parent link="right_camera_link"/>
+    <child link="right_camera_link_optical"/>
+    <origin xyz="0.01 0 0" rpy="${-pi/2} 0 ${-pi/2}"/> <!-- Shift to front flat (+0.01 x), rotate for ROS optical convention -->
+  </joint>
+
+  <link name="right_camera_link_optical"/>
+  <plugin name="clock_sync" filename="libgazebo_ros_clock.so">
+    <ros>
+      <namespace>/</namespace>
+    </ros>
+  </plugin>
+</robot>

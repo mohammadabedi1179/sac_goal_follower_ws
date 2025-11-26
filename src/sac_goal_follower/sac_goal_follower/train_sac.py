@@ -1,119 +1,210 @@
-# sac_goal_follower/train_sac.py
+#!/usr/bin/env python3
+import os
+import json
+import time
 
 import numpy as np
 import torch
-import os
-import time
-import json   # <-- NEW
 
 import rclpy
 from rclpy.node import Node
 
 from stable_baselines3 import SAC
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import configure
 
 from goal_env import GoalFollowerEnv
 
 
-class JsonLoggerCallback(BaseCallback):
+class EpisodeStatsCallback(BaseCallback):
     """
-    Custom callback to save training statistics to a JSON file
-    every N episodes.
+    Collects episode statistics and some training metrics and:
 
-    It records:
-      - episode number
-      - total timesteps
-      - episode reward and length (from Monitor's 'episode' info)
-      - the latest logger values (e.g. rollout/ep_rew_mean, train/actor_loss, ...)
+    - saves episode stats to JSON every `save_freq_episodes` episodes
+    - saves the model every `model_save_every_episodes` episodes
+    - saves a "best model" whenever a new best reward is achieved
+    - optionally stores trajectory & pose info from env
     """
 
-    def __init__(self, json_path: str, save_every_episodes: int = 10, verbose: int = 0):
+    def __init__(
+        self,
+        save_path: str,
+        save_freq_episodes: int,
+        model_save_dir: str | None = None,
+        model_save_every_episodes: int = 0,
+        model_name_prefix: str = "sac_goal_follower",
+        # NEW: best-model saving
+        best_model_path: str | None = None,
+        best_metric_key: str = "reward",
+        # NEW: trajectory saving frequency
+        traj_save_every_episodes: int = 10,
+        verbose: int = 1,
+    ):
         super().__init__(verbose)
-        self.json_path = json_path
-        self.save_every_episodes = save_every_episodes
-        self.episode_count = 0
-        self.data = []
+        self.save_path = save_path
+        self.save_freq_episodes = save_freq_episodes
+        self.model_save_dir = model_save_dir
+        self.model_save_every_episodes = model_save_every_episodes
+        self.model_name_prefix = model_name_prefix
 
-        # If file already exists, load it so we append instead of overwrite history
-        if os.path.exists(self.json_path):
-            try:
-                with open(self.json_path, "r") as f:
-                    self.data = json.load(f)
-            except Exception:
-                # If file is corrupted or not JSON, start fresh
-                self.data = []
+        self.best_model_path = best_model_path
+        self.best_metric_key = best_metric_key
+        self.best_metric_value = -np.inf
+
+        self.traj_save_every_episodes = traj_save_every_episodes
+
+        self.episode_stats = []
+        self._episode_counter = 0
+
+        if self.model_save_dir is not None:
+            os.makedirs(self.model_save_dir, exist_ok=True)
 
     def _on_step(self) -> bool:
-        # 'infos' comes from the VecEnv; each time an episode ends,
-        # Monitor puts an 'episode' dict inside info.
-        infos = self.locals.get("infos", [])
-        for info in infos:
-            if "episode" in info:
-                self.episode_count += 1
-                ep_info = info["episode"]
+        dones = self.locals.get("dones")
+        infos = self.locals.get("infos")
+        if dones is None or infos is None:
+            return True
 
-                if self.episode_count % self.save_every_episodes == 0:
-                    # Collect the latest values from SB3 logger if available
-                    log_dict = {}
-                    if hasattr(self.model, "logger") and hasattr(self.model.logger, "name_to_value"):
-                        # This contains entries like 'rollout/ep_len_mean', 'train/critic_loss', ...
-                        log_dict = dict(self.model.logger.name_to_value)
+        log_vals = self.logger.name_to_value
 
-                    # Add episode-specific info
-                    log_dict.update(
-                        {
-                            "episode": int(self.episode_count),
-                            "total_timesteps": int(self.num_timesteps),
-                            "episode_reward": float(ep_info.get("r", 0.0)),
-                            "episode_length": int(ep_info.get("l", 0)),
-                        }
+        for done, info in zip(dones, infos):
+            if done:
+                self._episode_counter += 1
+                ep_data = {
+                    "episode": self._episode_counter,
+                }
+
+                # Monitor wrapper episode info
+                if "episode" in info:
+                    ep_info = info["episode"]
+                    ep_data["reward"] = float(ep_info.get("r", 0.0))
+                    ep_data["length"] = int(ep_info.get("l", 0))
+                    ep_data["time"] = float(ep_info.get("t", 0.0))
+
+                # Training metrics
+                ep_data["actor_loss"] = float(log_vals.get("train/actor_loss", np.nan))
+                ep_data["critic_loss"] = float(log_vals.get("train/critic_loss", np.nan))
+                ep_data["ent_coef"] = float(log_vals.get("train/ent_coef", np.nan))
+                ep_data["learning_rate"] = float(
+                    log_vals.get("train/learning_rate", np.nan)
+                )
+
+                # NEW: extra env info (poses, trajectory, etc.)
+                # These keys come from env.info at the terminal step.
+                if "reason" in info:
+                    ep_data["termination_reason"] = info["reason"]
+                if "robot_start" in info:
+                    ep_data["robot_start"] = info["robot_start"]
+                if "goal_start" in info:
+                    ep_data["goal_start"] = info["goal_start"]
+                if "robot_final" in info:
+                    ep_data["robot_final"] = info["robot_final"]
+                if "goal_final" in info:
+                    ep_data["goal_final"] = info["goal_final"]
+                if "min_dist" in info:
+                    ep_data["min_dist"] = info["min_dist"]
+
+                # Save trajectory only every N episodes (to keep JSON size sane)
+                if (
+                    "robot_traj" in info
+                    and self.traj_save_every_episodes > 0
+                    and (self._episode_counter % self.traj_save_every_episodes) == 0
+                ):
+                    ep_data["robot_traj"] = info["robot_traj"]
+
+                self.episode_stats.append(ep_data)
+
+                if self.verbose > 0:
+                    print(
+                        f"[EpisodeStatsCallback] Ep {self._episode_counter}: "
+                        f"R={ep_data.get('reward', 0.0):.2f}, "
+                        f"L={ep_data.get('length', 0)}, "
+                        f"actor_loss={ep_data['actor_loss']:.3f}, "
+                        f"critic_loss={ep_data['critic_loss']:.3f}"
                     )
 
-                    self.data.append(log_dict)
-
-                    # Save the whole list as a JSON array
+                # ---- Save stats JSON every N episodes ----
+                if (self._episode_counter % self.save_freq_episodes) == 0:
                     try:
-                        with open(self.json_path, "w") as f:
-                            json.dump(self.data, f, indent=2)
-                    except Exception as e:
+                        with open(self.save_path, "w") as f:
+                            json.dump(self.episode_stats, f, indent=2)
                         if self.verbose > 0:
-                            print(f"[JsonLoggerCallback] Error writing JSON file: {e}")
+                            print(
+                                f"[EpisodeStatsCallback] Saved stats to {self.save_path}"
+                            )
+                    except Exception as e:
+                        print(f"[EpisodeStatsCallback] Error saving stats: {e}")
 
-                    if self.verbose > 0:
-                        print(
-                            f"[JsonLoggerCallback] Saved stats at episode "
-                            f"{self.episode_count} to {self.json_path}"
-                        )
+                # ---- Save model every M episodes ----
+                if (
+                    self.model_save_dir is not None
+                    and self.model_save_every_episodes > 0
+                    and (self._episode_counter % self.model_save_every_episodes) == 0
+                ):
+                    model_file = os.path.join(
+                        self.model_save_dir,
+                        f"{self.model_name_prefix}_ep_{self._episode_counter}"
+                        f"_steps_{self.num_timesteps}.zip",
+                    )
+                    try:
+                        self.model.save(model_file)
+                        if self.verbose > 0:
+                            print(
+                                f"[EpisodeStatsCallback] Saved model at episode "
+                                f"{self._episode_counter} to {model_file}"
+                            )
+                    except Exception as e:
+                        print(f"[EpisodeStatsCallback] Error saving model: {e}")
+
+                # ---- NEW: Save BEST model whenever best reward is reached ----
+                if self.best_model_path is not None:
+                    metric_val = ep_data.get(self.best_metric_key, np.nan)
+                    if not np.isnan(metric_val) and metric_val > self.best_metric_value:
+                        self.best_metric_value = metric_val
+                        try:
+                            self.model.save(self.best_model_path)
+                            if self.verbose > 0:
+                                print(
+                                    f"[EpisodeStatsCallback] New best {self.best_metric_key}="
+                                    f"{metric_val:.2f} at episode {self._episode_counter}; "
+                                    f"saved best model to {self.best_model_path}"
+                                )
+                        except Exception as e:
+                            print(f"[EpisodeStatsCallback] Error saving best model: {e}")
 
         return True
 
 
+
 class SACTrainer(Node):
     def __init__(self):
-        super().__init__('sac_trainer')
+        super().__init__("sac_trainer")
 
+        # Create environment
         self.env = GoalFollowerEnv(
-            cmd_topic='/follower_robot/cmd_vel',
-            goal_state_topic='/follower_robot/depth_cam/goal_marker_state',
-            goal_odom_topic='/goal_marker/odom',
-            robot_odom_topic='/follower_robot/odom',
+            cmd_topic="/follower_robot/cmd_vel",
+            goal_state_topic="/follower_robot/depth_cam/goal_marker_state",
+            goal_odom_topic="/goal_marker/odom",
+            robot_odom_topic="/follower_robot/odom",
             dt=0.1,
-            lost_timeout=5.0,
-            success_radius=2.0,
-            time_limit=50.0,
-            c_time=0.01,
+            lost_timeout=8.0,
+            success_radius=1.5,
+            time_limit=40.0,
+            c_time=0.1,
             c_dist=0.1,
             c_lost=0.1,
-            R_goal=50.0,
+            R_goal=120.0,
         )
 
+        # Directories for models and logs
         base_dir = os.path.dirname(__file__)
         self.model_dir = os.path.join(base_dir, "models")
         os.makedirs(self.model_dir, exist_ok=True)
         self.log_dir = os.path.join(base_dir, "logs")
         os.makedirs(self.log_dir, exist_ok=True)
+
+        # Logger for SB3 (stdout + CSV + TensorBoard)
         self.logger = configure(self.log_dir, ["stdout", "csv", "tensorboard"])
 
     def train(self):
@@ -122,7 +213,7 @@ class SACTrainer(Node):
         model = SAC(
             policy="MlpPolicy",
             env=env,
-            learning_rate=0.0003,
+            learning_rate=0.001,
             buffer_size=100000,
             batch_size=64,
             tau=0.005,
@@ -147,35 +238,45 @@ class SACTrainer(Node):
             _init_setup_model=True,
         )
 
-        checkpoint_callback = CheckpointCallback(
-            save_freq=100,
-            save_path=self.model_dir,
-            name_prefix="sac_goal_follower",
-            save_replay_buffer=True,
-            save_vecnormalize=False,
-        )
+        # Use our configured logger
+        model.set_logger(self.logger)
 
-        # NEW: JSON logger callback (every 10 episodes)
-        json_log_path = os.path.join(self.log_dir, "episode_stats.json")
-        json_logger_callback = JsonLoggerCallback(
-            json_path=json_log_path,
-            save_every_episodes=10,
+        # Episode stats + model saving callback
+        stats_path = os.path.join(self.log_dir, "episode_stats.json")
+        best_model_path = os.path.join(self.model_dir, "sac_goal_follower_best.zip")
+
+        stats_callback = EpisodeStatsCallback(
+            save_path=stats_path,
+            save_freq_episodes=10,          # JSON every 10 episodes
+            model_save_dir=self.model_dir,
+            model_save_every_episodes=1000, # periodic checkpoints
+            model_name_prefix="sac_goal_follower",
+            best_model_path=best_model_path,   # NEW: best model
+            best_metric_key="reward",          # use episode reward as metric
+            traj_save_every_episodes=10,       # NEW: save path every 10 episodes
             verbose=1,
         )
+
 
         self.get_logger().info(
             f"Starting training with models at {self.model_dir} and logs at {self.log_dir}"
         )
 
-        # You can pass a list of callbacks directly
         model.learn(
-            total_timesteps=500000,
-            callback=[checkpoint_callback, json_logger_callback],
+            total_timesteps=1000000,
+            callback=stats_callback,
             log_interval=10,
         )
-        model.save(os.path.join(self.model_dir, "sac_goal_follower_final"))
 
-        self.get_logger().info("Training completed and model saved")
+        final_path = os.path.join(self.model_dir, "sac_goal_follower_final")
+        model.save(final_path)
+
+        self.get_logger().info(
+            f"Training completed and final model saved to {final_path}. "
+            f"Episode stats JSON at {stats_path}"
+        )
+
+        self.env.close()
 
 
 def main(args=None):
@@ -186,13 +287,10 @@ def main(args=None):
     except KeyboardInterrupt:
         trainer.get_logger().info("Training interrupted by user")
     finally:
-        # Close env (which destroys its ROS node + executor)
         trainer.env.close()
-        # Destroy the trainer node itself
         trainer.destroy_node()
-        # Now shut down the global ROS client library
-        rclpy.shutdown()
-
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

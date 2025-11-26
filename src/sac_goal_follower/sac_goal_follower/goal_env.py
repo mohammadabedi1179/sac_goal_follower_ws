@@ -77,6 +77,8 @@ class _ROS(Node):
             1.0 - 2.0 * (o.y * o.y + o.z * o.z),
         )
         self.robot_pose = (p.x, p.y, yaw)
+        self._last_odom_vx = msg.twist.twist.linear.x
+        self._last_odom_wz = msg.twist.twist.angular.z
 
     # --- Helpers ---
 
@@ -96,8 +98,8 @@ class GoalFollowerEnv(Env):
         goal_state_topic="/follower_robot/depth_cam/goal_marker_state",
         goal_odom_topic="/goal_marker/odom",
         robot_odom_topic="/follower_robot/odom",
-        wheel_radius=0.10,
-        wheel_separation=0.35,
+        wheel_radius=0.0925,
+        wheel_separation=0.66108,
         dt=0.1,
         lost_timeout=5.0,
         success_radius=0.35,
@@ -112,8 +114,8 @@ class GoalFollowerEnv(Env):
         # --------- ACTION SPACE (FIXED RANGE) ----------
         # SAC will output actions in [-1, 1]. We map them to
         # physical linear and angular velocities.
-        self.v_max = 0.5        # [m/s] ~ 2.5 km/h (safe)
-        self.w_max = 1.5        # [rad/s]
+        self.v_max = 2.0        # [m/s] ~ 2.5 km/h (safe)
+        self.w_max = 2.0        # [rad/s]
         self.action_low = np.array([-1.0, -1.0], dtype=np.float32)
         self.action_high = np.array([1.0, 1.0], dtype=np.float32)
 
@@ -146,13 +148,17 @@ class GoalFollowerEnv(Env):
 
         # Extra reward shaping
         self.c_angle = 0.05     # penalty on |bearing|
-        self.c_progress = 5.0   # reward for reducing distance
+        self.c_progress = 0.5   # reward for reducing distance
         self.c_ctrl = 0.01      # control effort penalty
 
         # Action smoothing (low-pass filter on v, w)
-        self.smooth_alpha = 0.2   # 0 -> no movement, 1 -> no smoothing
+        self.smooth_alpha = 0.6   # 0 -> no movement, 1 -> no smoothing
         self._prev_v_cmd = 0.0
         self._prev_w_cmd = 0.0
+
+        # --- Search parameters (for 360° search on reset) ---
+        self.enable_search_on_reset = True
+        self.search_angular_speed = 4.0  # [rad/s], can tune later
 
         self.ros = _ROS(
             cmd_topic=cmd_topic,
@@ -171,6 +177,15 @@ class GoalFollowerEnv(Env):
 
         # For progress-based reward
         self._prev_dist = None
+
+        # --- NEW: per-episode logging buffers ---
+        self._ep_robot_traj = []
+        self._robot_start = None
+        self._goal_start = None
+        self._robot_last = None
+        self._goal_last = None
+        self._min_dist = None
+
 
     # --- ROS spin helper ---
 
@@ -286,16 +301,82 @@ class GoalFollowerEnv(Env):
             f"[{name}] Failed to reset after {max_attempts}"
         )
         return False
+    def _search_full_rotation(self) -> bool:
+        """
+        Rotate the robot exactly 360 degrees at a fixed angular speed.
+        Stop immediately if the marker becomes visible.
+
+        Returns:
+            True  -> marker seen at least once
+            False -> completed full rotation without seeing the marker
+        """
+        if self.ros.robot_pose is None:
+            self.ros.get_logger().warn("[SEARCH] No robot odom available, skipping search.")
+            return False
+
+        # Store initial yaw
+        _, _, yaw0 = self.ros.robot_pose
+
+        target_rotation = 2.0 * math.pi     # 360 degrees
+        w = self.search_angular_speed       # constant rotation speed
+
+        self.ros.get_logger().info(
+            f"[SEARCH] Starting 360-degree search at {w:.2f} rad/s"
+        )
+
+        accumulated = 0.0
+        prev_yaw = yaw0
+        seen_once = False
+
+        while accumulated < target_rotation:
+            # Command rotation
+            self.ros.send_cmd(0.0, w)
+            self._spin(self.dt)
+
+            # Check visibility
+            obs = self._obs(default=False)
+            if self._visible:
+                self.ros.get_logger().info(
+                    f"[SEARCH] Goal seen during search (dist={obs[0]:.2f}, bearing={obs[1]:.2f})"
+                )
+                seen_once = True
+                break
+
+            # Update accumulated rotation based on yaw change
+            if self.ros.robot_pose is not None:
+                _, _, yaw = self.ros.robot_pose
+                dyaw = _wrap(yaw - prev_yaw)
+                accumulated += abs(dyaw)
+                prev_yaw = yaw
+
+        # Stop rotation
+        self.ros.send_cmd(0.0, 0.0)
+        self._spin(0.1)
+
+        self.ros.get_logger().info(
+            f"[SEARCH] Finished search; seen={seen_once}, total_rot={accumulated:.2f} rad"
+        )
+
+        return seen_once
 
     # --- Gym API: reset ---
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        now = time.time()
-        self._t0 = now
-        self._last_seen = now
+
+        # Do NOT start episode timer yet; we will start it after search.
+        self._t0 = None
+        self._last_seen = None
         self._visible = False
         self._last_goal_pose = None
+
+        # Per-episode logging / trajectory buffers
+        self._ep_robot_traj = []
+        self._robot_start = None
+        self._goal_start = None
+        self._robot_last = None
+        self._goal_last = None
+        self._min_dist = None
 
         # Stop robot & reset smoothing state
         self._prev_v_cmd = 0.0
@@ -307,20 +388,55 @@ class GoalFollowerEnv(Env):
         self.ros.send_cmd(0.0, 0.0)
 
         # Reset robot and goal_marker in Gazebo
+        # Robot stays at origin
         self._reset_entity_with_retry("my_robot", 0.0, 0.0, 0.3, 0.7854)
-        self._reset_entity_with_retry("goal_marker", 5.0, 5.0, 0.75, 0.0)
+
+        # --- Random goal on a circle of radius 7 m around origin ---
+        radius = 7.0  # meters
+        angle = self.np_random.uniform(0.0, 2.0 * math.pi)  # Gym's RNG
+        gx = radius * math.cos(angle)
+        gy = radius * math.sin(angle)
+        self._reset_entity_with_retry("goal_marker", gx, gy, 0.75, 0.0)
 
         # Let things settle
         self._spin(0.5)
 
-        obs = self._obs(default=True)
+        # --- NEW: perform a 360-degree search until marker is visible ---
+        seen = False
+        if self.enable_search_on_reset:
+            seen = self._search_full_rotation()
+
+        # Now start episode time AFTER search
+        now = time.time()
+        self._t0 = now
+        self._last_seen = now  # baseline; will be updated when visible
+
+        # Initialize start poses if odom is available (after spawn + search)
+        if self.ros.robot_pose is not None:
+            rx, ry, _ = self.ros.robot_pose
+            self._robot_start = (rx, ry)
+            self._robot_last = (rx, ry)
+            self._ep_robot_traj.append((rx, ry))
+
+        if self.ros.goal_pose is not None:
+            gx0, gy0 = self.ros.goal_pose
+            self._goal_start = (gx0, gy0)
+            self._goal_last = (gx0, gy0)
+
+        # Build initial observation:
+        #  - if search saw the goal, use fresh obs from sensors
+        #  - if not, fallback to last_valid (default=True)
+        obs = self._obs(default=not seen)
+
         # Initialize _prev_dist from initial observation
         self._prev_dist = float(obs[0])
 
         self.ros.get_logger().info(
-            f"Episode reset completed: initial obs={obs}"
+            f"Episode reset completed: initial obs={obs}, "
+            f"goal_spawn=({gx:.2f}, {gy:.2f}), seen_in_search={seen}"
         )
         return obs, {}
+
 
     # --- Gym API: step ---
 
@@ -357,6 +473,34 @@ class GoalFollowerEnv(Env):
             rx, ry, _ = self.ros.robot_pose
             gx, gy = self.ros.goal_pose
             real_dist = math.sqrt((gx - rx) ** 2 + (gy - ry) ** 2)
+        # Get true velocity
+        vx = (
+            self.ros._last_odom_vx
+            if hasattr(self.ros, '_last_odom_vx')
+            else None
+        )
+        wz = (
+            self.ros._last_odom_wz
+            if hasattr(self.ros, '_last_odom_wz')
+            else None
+        )
+        # --- NEW: record robot pose & goal pose for trajectory logging ---
+        if self.ros.robot_pose is not None:
+            rx, ry, _ = self.ros.robot_pose
+            self._robot_last = (rx, ry)
+            self._ep_robot_traj.append((rx, ry))
+        if self.ros.goal_pose is not None:
+            gx, gy = self.ros.goal_pose
+            self._goal_last = (gx, gy)
+
+        # Update min distance seen so far (based on observation distance)
+        if self._min_dist is None or dist < self._min_dist:
+            self._min_dist = dist
+        
+        self.ros.get_logger().info(
+            f"[STEP ACTUAL] v_real={vx:.3f}, w_real={wz:.3f}"
+        )
+
 
         # --------- REWARD SHAPING (FIXED) ----------
         # Progress term: positive if distance is reduced
@@ -401,7 +545,7 @@ class GoalFollowerEnv(Env):
 
         # Failure: lost marker for too long
         if (time.time() - self._last_seen) >= self.lost_timeout:
-            reward -= 2 * self.R_goal  # strong negative for losing the goal
+            reward -= self.R_goal  # strong negative for losing the goal
             term = True
             reason = "Lost marker timeout"
 
@@ -416,8 +560,16 @@ class GoalFollowerEnv(Env):
             f"v_cmd={v_cmd:.2f}, w_cmd={w_cmd:.2f}, "
             f"reward={reward:.2f}, term={term}, trunc={trunc}, reason={reason}"
         )
-
-        return obs, float(reward), term, trunc, {"reason": reason}
+        info = {
+            "reason": reason,
+            "robot_start": self._robot_start,
+            "goal_start": self._goal_start,
+            "robot_final": self._robot_last,
+            "goal_final": self._goal_last,
+            "min_dist": self._min_dist,
+            "robot_traj": self._ep_robot_traj,
+        }
+        return obs, float(reward), term, trunc, info
 
     def close(self):
         try:
@@ -438,4 +590,5 @@ class GoalFollowerEnv(Env):
                 self.ros.destroy_node()
         except Exception as e:
             print(f"Error destroying node: {e}")
+
 

@@ -94,6 +94,7 @@
         <child link="right_back_wheel" />
         <origin xyz="-0.3 -0.425 0" rpy="0 0 0" />
         <axis xyz="0 1 0" />
+        <!--<dynamics damping="0.2" friction="0.05"/>-->
     </joint>
     <link name="right_back_wheel">
         <visual>
@@ -109,14 +110,14 @@
                 <cylinder length="0.05" radius="0.1"/>
             </geometry>
         </collision>
-        <xacro:inertial_cylinder mass="0.1" length="0.05" radius="0.1">
+        <xacro:inertial_cylinder mass="0.5" length="0.05" radius="0.1">
             <origin xyz="0 0 0" rpy="0 0 0"/>
         </xacro:inertial_cylinder>
     </link>
     <gazebo reference="right_back_wheel">
         <material> Gazebo/Blue </material>
         <mu1>1.0</mu1><mu2>1.0</mu2>
-        <kp>1e6</kp><kd>1</kd>
+        <!--<kp>1e6</kp><kd>1</kd>-->
     </gazebo>
 
     <!-- LEFT BACK WHEEL LINK-->
@@ -142,14 +143,14 @@
                 <cylinder length="0.05" radius="0.1"/>
             </geometry>
         </collision>
-        <xacro:inertial_cylinder mass="0.1" length="0.05" radius="0.1">
+        <xacro:inertial_cylinder mass="0.5" length="0.05" radius="0.1">
             <origin xyz="0 0 0" rpy="0 0 0"/>
         </xacro:inertial_cylinder>
     </link>
     <gazebo reference="left_back_wheel">
         <material> Gazebo/Blue </material>
         <mu1>1.0</mu1><mu2>1.0</mu2>
-        <kp>1e6</kp><kd>1</kd>
+        <!--<kp>1e6</kp><kd>1</kd>-->
     </gazebo>
 
     <!-- RIGHT FRONT WHEEL LINK-->
@@ -174,14 +175,14 @@
                 <cylinder length="0.05" radius="0.1"/>
             </geometry>
         </collision>
-        <xacro:inertial_cylinder mass="0.1" length="0.05" radius="0.1">
+        <xacro:inertial_cylinder mass="0.5" length="0.05" radius="0.1">
             <origin xyz="0 0 0" rpy="0 0 0"/>
         </xacro:inertial_cylinder>
     </link>
     <gazebo reference="right_front_wheel">
         <material> Gazebo/Blue </material>
         <mu1>1.0</mu1><mu2>1.0</mu2>
-        <kp>1e6</kp><kd>1</kd>
+        <!--<kp>1e6</kp><kd>1</kd>-->
     </gazebo>
 
     <!-- LEFT FRONT WHEEL LINK-->
@@ -207,14 +208,14 @@
                 <cylinder length="0.05" radius="0.1"/>
             </geometry>
         </collision>
-        <xacro:inertial_cylinder mass="0.1" length="0.05" radius="0.1">
+        <xacro:inertial_cylinder mass="0.5" length="0.05" radius="0.1">
             <origin xyz="0 0 0" rpy="0 0 0"/>
         </xacro:inertial_cylinder>
     </link>
     <gazebo reference="left_front_wheel">
         <material> Gazebo/Blue </material>
         <mu1>1.0</mu1><mu2>1.0</mu2>
-        <kp>1e6</kp><kd>1</kd>
+        <!--<kp>1e6</kp><kd>1</kd>-->
     </gazebo>
     
     <!-- HANDLE MIDDLE LINK-->
