@@ -38,7 +38,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/base_link.STL"/>
+        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/base_link.stl"/>
       </geometry>
       <material name="">
         <color rgba="0.75294 0.75294 0.75294 1"/>
@@ -47,7 +47,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/base_link.STL"/>
+        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/base_link.stl"/>
       </geometry>
     </collision>
   </link>
@@ -102,14 +102,14 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/BL_link.STL"/>
+        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/BL_link.stl"/>
       </geometry>
       <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/BL_link.STL"/>
+        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/BL_link.stl"/>
       </geometry>
     </collision>
   </link>
@@ -127,14 +127,14 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/BR_link.STL"/>
+        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/BR_link.stl"/>
       </geometry>
       <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/BR_link.STL"/>
+        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/BR_link.stl"/>
       </geometry>
     </collision>
   </link>
@@ -152,14 +152,14 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/FL_link.STL"/>
+        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/FL_link.stl"/>
       </geometry>
       <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/FL_link.STL"/>
+        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/FL_link.stl"/>
       </geometry>
     </collision>
   </link>
@@ -177,14 +177,14 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/FR_link.STL"/>
+        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/FR_link.stl"/>
       </geometry>
       <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/FR_link.STL"/>
+        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/FR_link.stl"/>
       </geometry>
     </collision>
   </link>

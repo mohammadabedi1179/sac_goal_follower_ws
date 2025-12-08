@@ -6,13 +6,14 @@ import cv2
 import numpy as np
 import rclpy
 from rclpy.node import Node
+
 from sensor_msgs.msg import Image
+from stereo_msgs.msg import DisparityImage
 from std_msgs.msg import Float32
 from cv_bridge import CvBridge
 from message_filters import Subscriber, ApproximateTimeSynchronizer
 
 from detectors_msgs.msg import GoalMarkerState
-
 
 # Stereo depth params (your previous setup)
 FOCAL_PX = 555.78
@@ -22,6 +23,13 @@ BASELINE_M = 0.0717
 FX_LEFT = 1360.02116
 CX_LEFT = 820.01429
 
+# Disparity / ROI tuning
+MIN_VALID_PIX = 50          # min valid disparity pixels in ROI
+MIN_DISPARITY = 0.5         # px, below this depth is unreliable
+DEPTH_MIN = 0.2             # m
+DEPTH_MAX = 50.0            # m
+MAX_DISP_DT = 0.05          # max allowed time diff between left image and disparity (sec)
+
 
 class GoalMarkerDepth(Node):
     def __init__(self):
@@ -30,17 +38,21 @@ class GoalMarkerDepth(Node):
         # --- Parameters (same names as before, with sensible defaults) ---
         self.declare_parameter(
             "left_topic",
-            "/follower_robot/depth_cam/left/image_rect_color",
+            "/follower_robot/depth_cam/left/image_rect",
         )
         self.declare_parameter(
             "right_topic",
-            "/follower_robot/depth_cam/right/image_rect_color",
+            "/follower_robot/depth_cam/right/image_rect",
         )
         self.declare_parameter("slop", 0.03)
         self.declare_parameter("min_area", 300.0)
         self.declare_parameter("show_debug", False)
         self.declare_parameter("publish_overlay", True)
         self.declare_parameter("depth_window", 5)
+        self.declare_parameter(
+            "disparity_topic",
+            "/follower_robot/depth_cam/disparity",
+        )
 
         left_topic = (
             self.get_parameter("left_topic").get_parameter_value().string_value
@@ -58,6 +70,9 @@ class GoalMarkerDepth(Node):
         self.publish_overlay = (
             self.get_parameter("publish_overlay").get_parameter_value().bool_value
         )
+        disparity_topic = (
+            self.get_parameter("disparity_topic").get_parameter_value().string_value
+        )
 
         depth_window_param = (
             self.get_parameter("depth_window")
@@ -74,7 +89,7 @@ class GoalMarkerDepth(Node):
 
         self.bridge = CvBridge()
 
-        # --- Subscribers: stereo pair with approximate sync ---
+        # --- Subscribers: stereo pair with approximate sync (for red detection & overlays) ---
         self.left_sub = Subscriber(self, Image, left_topic, qos_profile=10)
         self.right_sub = Subscriber(self, Image, right_topic, qos_profile=10)
 
@@ -84,6 +99,16 @@ class GoalMarkerDepth(Node):
             slop=slop,
         )
         self.sync.registerCallback(self.cb_pair)
+
+        # --- Disparity subscriber (from stereo_image_proc) ---
+        self.disp_sub = self.create_subscription(
+            DisparityImage,
+            disparity_topic,
+            self.disparity_cb,
+            10,
+        )
+        self.latest_disp = None
+        self.latest_disp_stamp = None
 
         # --- Publishers ---
         # Numeric depths (backward-compatible with your current setup)
@@ -110,7 +135,7 @@ class GoalMarkerDepth(Node):
             self.left_overlay_pub = None
             self.right_overlay_pub = None
 
-        # NEW: high-level state publisher for RL env
+        # High-level state publisher for RL env
         self.state_pub = self.create_publisher(
             GoalMarkerState,
             "/follower_robot/depth_cam/goal_marker_state",
@@ -118,10 +143,21 @@ class GoalMarkerDepth(Node):
         )
 
         self.get_logger().info(
-            f"GoalMarkerDepth node ready: red-cube detection + depth (MA window={self.depth_window_size})"
+            f"GoalMarkerDepth node ready: red-cube detection + depth from disparity ROI "
+            f"(MA window={self.depth_window_size})"
         )
 
-    # ---- Stereo callback ----
+    # ---- Disparity callback ----
+    def disparity_cb(self, msg: DisparityImage):
+        """Store the latest disparity image (32FC1) and timestamp."""
+        try:
+            disp = self.bridge.imgmsg_to_cv2(msg.image, desired_encoding="32FC1")
+            self.latest_disp = disp
+            self.latest_disp_stamp = msg.header.stamp
+        except Exception as e:
+            self.get_logger().warn(f"disparity_cb: cv_bridge conversion failed: {e}")
+
+    # ---- Stereo callback (left/right images) ----
     def cb_pair(self, left_msg: Image, right_msg: Image):
         # Convert to BGR
         try:
@@ -160,22 +196,56 @@ class GoalMarkerDepth(Node):
 
         # ---- CASE 1: no detection on either side ----
         if L is None or R is None:
-            # We STILL publish, but visible=False
             self.state_pub.publish(state)
             if self.show_debug:
                 self.get_logger().info("Goal marker not detected.")
             return
 
-        # ---- CASE 2: disparity invalid ----
-        disparity = self.mean_corner_disparity(L, R)
-        if disparity <= 0.0:
-            self.state_pub.publish(state)  # visible=False
+        # ---- Ensure we have a disparity image, and it's near-synchronized ----
+        if self.latest_disp is None or self.latest_disp_stamp is None:
+            self.state_pub.publish(state)
             if self.show_debug:
-                self.get_logger().info("Invalid disparity (<= 0).")
+                self.get_logger().info("No disparity image yet, skipping depth.")
             return
 
-        # ---- CASE 3: VALID detection: compute depth + bearing ----
+        # Simple time sync check
+        lt = left_msg.header.stamp.sec + left_msg.header.stamp.nanosec * 1e-9
+        dt = abs(
+            lt
+            - (
+                self.latest_disp_stamp.sec
+                + self.latest_disp_stamp.nanosec * 1e-9
+            )
+        )
+        if dt > MAX_DISP_DT:
+            # Too old / too far: skip this frame
+            self.state_pub.publish(state)
+            if self.show_debug:
+                self.get_logger().info(
+                    f"Disparity too far in time (dt={dt:.3f}s > {MAX_DISP_DT}), skipping."
+                )
+            return
+
+        # ---- Compute mean disparity inside LEFT bbox ----
+        disparity = self.mean_disparity_in_bbox(L)
+        if disparity is None or disparity <= MIN_DISPARITY:
+            self.state_pub.publish(state)
+            if self.show_debug:
+                self.get_logger().info(
+                    f"Invalid or too small disparity in ROI: {disparity}"
+                )
+            return
+
+        # ---- Compute depth from disparity ----
         depth_m_raw = (FOCAL_PX * BASELINE_M) / disparity
+        if not (DEPTH_MIN <= depth_m_raw <= DEPTH_MAX):
+            self.state_pub.publish(state)
+            if self.show_debug:
+                self.get_logger().info(
+                    f"Depth out of range: {depth_m_raw:.3f} m (disp={disparity:.3f})"
+                )
+            return
+
         self.depth_history.append(depth_m_raw)
         depth_m_smooth = float(sum(self.depth_history) / len(self.depth_history))
 
@@ -213,7 +283,6 @@ class GoalMarkerDepth(Node):
             cv2.imshow("goal_left", l_overlay)
             cv2.imshow("goal_right", r_overlay)
             cv2.waitKey(1)
-
 
     # ---- Red detection & rectangle extraction ----
     def find_red_marker(self, bgr):
@@ -262,28 +331,38 @@ class GoalMarkerDepth(Node):
         # Return the same rect for convenience (L,R)
         return (x, y, w, h), (x, y, w, h), overlay
 
-    # ---- Disparity from rectangle corners ----
-    @staticmethod
-    def mean_corner_disparity(L, R):
-        lx, ly, lw, lh = L
-        rx, ry, rw, rh = R
+    # ---- Mean disparity inside the LEFT bbox ----
+    def mean_disparity_in_bbox(self, rect):
+        """
+        rect = (x, y, w, h) in pixel coords on left rectified image.
+        Uses latest disparity image (aligned with left) and returns mean
+        of valid disparities in the ROI.
+        """
+        if self.latest_disp is None:
+            return None
 
-        L_corners = [
-            (lx, ly),
-            (lx + lw, ly),
-            (lx, ly + lh),
-            (lx + lw, ly + lh),
-        ]
-        R_corners = [
-            (rx, ry),
-            (rx + rw, ry),
-            (rx, ry + rh),
-            (rx + rw, ry + rh),
-        ]
+        x, y, w, h = rect
+        h_img, w_img = self.latest_disp.shape[:2]
 
-        diffs = [abs(L_corners[i][0] - R_corners[i][0]) for i in range(4)]
-        disp = float(np.mean(diffs))
-        return disp if disp > 0.0 else 0.0
+        x1 = max(0, min(w_img - 1, int(x)))
+        y1 = max(0, min(h_img - 1, int(y)))
+        x2 = max(0, min(w_img, int(x + w)))
+        y2 = max(0, min(h_img, int(y + h)))
+
+        if x2 <= x1 or y2 <= y1:
+            return None
+
+        roi = self.latest_disp[y1:y2, x1:x2]
+        if roi.size == 0:
+            return None
+
+        # Valid disparities: > 0, finite
+        valid = roi[np.isfinite(roi) & (roi > 0.0)]
+        if valid.size < MIN_VALID_PIX:
+            return None
+
+        # You can switch to np.median(valid) if you want extra robustness
+        return float(valid.mean())
 
 
 def main():

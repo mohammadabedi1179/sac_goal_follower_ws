@@ -1,7 +1,9 @@
 import time
 import math
-import numpy as np
+import json
 import subprocess
+
+import numpy as np
 
 import rclpy
 from rclpy.node import Node
@@ -10,8 +12,9 @@ from rclpy.executors import SingleThreadedExecutor
 from gymnasium import Env, spaces
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
+from std_msgs.msg import String
 
-from detectors_msgs.msg import GoalMarkerState  # high-level marker state
+from detectors_msgs.msg import GoalMarkerState
 
 
 def _wrap(a: float) -> float:
@@ -28,6 +31,7 @@ class _ROS(Node):
 
     - Subscribes to GoalMarkerState (vision + depth results).
     - Subscribes to robot & goal odometry.
+    - Subscribes to obstacle depth JSON.
     - Publishes cmd_vel.
     """
 
@@ -37,6 +41,7 @@ class _ROS(Node):
         goal_state_topic: str,
         goal_odom_topic: str,
         robot_odom_topic: str,
+        obstacle_topic: str = "/follower_robot/obstacles_depth",
     ):
         super().__init__("sac_goal_env_node")
 
@@ -45,8 +50,11 @@ class _ROS(Node):
 
         # Buffers
         self.goal_state: GoalMarkerState | None = None
-        self.goal_pose = None  # (x, y)
-        self.robot_pose = None  # (x, y, yaw)
+        self.goal_pose = None                 # (x, y) from /goal_marker/odom
+        self.robot_pose = None                # (x, y, yaw) from /follower_robot/odom
+        self._last_odom_vx = 0.0
+        self._last_odom_wz = 0.0
+        self.obstacles_json: str | None = None
 
         # Subscriptions
         self.create_subscription(
@@ -56,9 +64,8 @@ class _ROS(Node):
             10,
         )
         self.create_subscription(Odometry, goal_odom_topic, self._goal_odom_cb, 10)
-        self.create_subscription(
-            Odometry, robot_odom_topic, self._robot_odom_cb, 10
-        )
+        self.create_subscription(Odometry, robot_odom_topic, self._robot_odom_cb, 10)
+        self.create_subscription(String, obstacle_topic, self._obstacle_cb, 10)
 
     # --- Callbacks ---
 
@@ -79,6 +86,10 @@ class _ROS(Node):
         self.robot_pose = (p.x, p.y, yaw)
         self._last_odom_vx = msg.twist.twist.linear.x
         self._last_odom_wz = msg.twist.twist.angular.z
+
+    def _obstacle_cb(self, msg: String):
+        # Raw JSON string from stereo_box_depth_from_disparity_IQR_EMA
+        self.obstacles_json = msg.data
 
     # --- Helpers ---
 
@@ -111,27 +122,25 @@ class GoalFollowerEnv(Env):
     ):
         super().__init__()
 
-        # --------- ACTION SPACE (FIXED RANGE) ----------
-        # SAC will output actions in [-1, 1]. We map them to
-        # physical linear and angular velocities.
-        self.v_max = 2.0        # [m/s] ~ 2.5 km/h (safe)
-        self.w_max = 2.0        # [rad/s]
+        # --------- ACTION SPACE ----------
+        self.v_max = 2.0     # [m/s]
+        self.w_max = 2.0     # [rad/s]
         self.action_low = np.array([-1.0, -1.0], dtype=np.float32)
         self.action_high = np.array([1.0, 1.0], dtype=np.float32)
-
         self.action_space = spaces.Box(
             low=self.action_low,
             high=self.action_high,
             dtype=np.float32,
         )
 
-        # Observation: [distance_to_goal, bearing]
+        # --------- OBSERVATION SPACE ----------
+        # [distance_to_goal, bearing_to_goal, min_obstacle_depth]
         self.observation_space = spaces.Box(
-            low=np.array([0.0, -math.pi], np.float32),
-            high=np.array([np.inf, math.pi], np.float32),
+            low=np.array([0.0, -math.pi, 0.0], np.float32),
+            high=np.array([np.inf, math.pi, np.inf], np.float32),
         )
 
-        # Kinematic params kept if needed later
+        # Kinematics
         self.r = wheel_radius
         self.L = wheel_separation
 
@@ -145,40 +154,39 @@ class GoalFollowerEnv(Env):
         self.c_dist = c_dist
         self.c_lost = c_lost
         self.R_goal = R_goal
-
-        # Extra reward shaping
         self.c_angle = 0.05     # penalty on |bearing|
         self.c_progress = 0.5   # reward for reducing distance
         self.c_ctrl = 0.01      # control effort penalty
 
-        # Action smoothing (low-pass filter on v, w)
-        self.smooth_alpha = 0.6   # 0 -> no movement, 1 -> no smoothing
+        # Action smoothing
+        self.smooth_alpha = 0.6
         self._prev_v_cmd = 0.0
         self._prev_w_cmd = 0.0
 
-        # --- Search parameters (for 360° search on reset) ---
+        # Search-on-reset
         self.enable_search_on_reset = True
-        self.search_angular_speed = 4.0  # [rad/s], can tune later
+        self.search_angular_speed = 4.0  # [rad/s]
 
+        # ROS wrapper
         self.ros = _ROS(
             cmd_topic=cmd_topic,
             goal_state_topic=goal_state_topic,
             goal_odom_topic=goal_odom_topic,
             robot_odom_topic=robot_odom_topic,
+            obstacle_topic="/follower_robot/obstacles_depth",
         )
         self.exec = SingleThreadedExecutor()
         self.exec.add_node(self.ros)
 
         self._t0 = None
         self._last_seen = None
-        self._last_obs_valid = np.array([7.08, 0.0], np.float32)
         self._last_goal_pose = None
         self._visible = False
 
         # For progress-based reward
         self._prev_dist = None
 
-        # --- NEW: per-episode logging buffers ---
+        # Per-episode logging
         self._ep_robot_traj = []
         self._robot_start = None
         self._goal_start = None
@@ -186,6 +194,14 @@ class GoalFollowerEnv(Env):
         self._goal_last = None
         self._min_dist = None
 
+        # Obstacle handling
+        self.obstacle_safe_radius = 1.5       # start penalizing here [m]
+        self.obstacle_collision_radius = 0.7  # collision radius [m]
+        self.c_obstacle = 2.0                 # penalty factor
+        self.max_obstacle_depth = 10.0        # default "no obstacle" depth
+        self._last_obs_valid = np.array(
+            [7.08, 0.0, self.max_obstacle_depth], np.float32
+        )
 
     # --- ROS spin helper ---
 
@@ -194,23 +210,55 @@ class GoalFollowerEnv(Env):
         while time.time() < end:
             self.exec.spin_once(timeout_sec=0.001)
 
+    # --- Obstacle depth helper ---
+
+    def _compute_min_obstacle_depth(self) -> float:
+        """
+        Parse latest JSON from obstacles_depth and return min depth [m].
+        JSON format: [{"id": "...", "class": "...", "disparity_px": ..., "depth_m": ...}, ...]
+        """
+        if getattr(self.ros, "obstacles_json", None) is None:
+            return self.max_obstacle_depth
+
+        try:
+            objs = json.loads(self.ros.obstacles_json)
+        except Exception:
+            return self.max_obstacle_depth
+
+        if not isinstance(objs, list) or len(objs) == 0:
+            return self.max_obstacle_depth
+
+        depths = []
+        for o in objs:
+            try:
+                d = float(o.get("depth_m", float("inf")))
+                if math.isfinite(d) and d > 0.0:
+                    depths.append(d)
+            except Exception:
+                continue
+
+        if not depths:
+            return self.max_obstacle_depth
+
+        d_min = min(depths)
+        d_min = max(0.0, min(d_min, self.max_obstacle_depth))
+        return float(d_min)
+
     # --- Observation construction ---
 
     def _obs(self, default: bool = False):
         """
-        Build observation [distance, bearing].
+        Build observation [distance_to_goal, bearing, min_obstacle_depth].
 
-        If default=True (used at reset), just return last valid obs (no new state).
+        If default=True, return last valid observation without forcing new perception.
         """
         if default:
             return self._last_obs_valid.copy()
 
         st = self.ros.goal_state
-
-        # Assume not visible by default; we will set True below if needed
         self._visible = False
 
-        # ---- CASE 1: directly visible from perception node ----
+        # CASE 1: directly visible from GoalMarkerState
         if st is not None and st.visible:
             self._visible = True
             self._last_seen = time.time()
@@ -218,32 +266,34 @@ class GoalFollowerEnv(Env):
             d = float(st.depth_m)
             b = _wrap(float(st.bearing_rad))
 
-            # Estimate world-frame goal pose from robot pose
+            # Estimate world-frame goal pose from robot pose + (d, b)
             if self.ros.robot_pose is not None:
                 rx, ry, ryaw = self.ros.robot_pose
                 gx = rx + d * math.cos(ryaw + b)
                 gy = ry + d * math.sin(ryaw + b)
                 self._last_goal_pose = (gx, gy)
 
-            obs = np.array([d, b], np.float32)
+            min_obs_depth = self._compute_min_obstacle_depth()
+            obs = np.array([d, b, min_obs_depth], np.float32)
             self._last_obs_valid = obs
             return obs
 
-        # ---- CASE 2: not visible; propagate last known world pose using odom ----
+        # CASE 2: not visible, but we have last known goal pose in world frame
         if self._last_goal_pose is not None and self.ros.robot_pose is not None:
             rx, ry, ryaw = self.ros.robot_pose
             dx = self._last_goal_pose[0] - rx
             dy = self._last_goal_pose[1] - ry
             dist = math.sqrt(dx * dx + dy * dy)
             bearing = _wrap(math.atan2(dy, dx) - ryaw)
-            obs = np.array([dist, bearing], np.float32)
+            min_obs_depth = self._compute_min_obstacle_depth()
+            obs = np.array([dist, bearing, min_obs_depth], np.float32)
             self._last_obs_valid = obs
             return obs
 
-        # ---- CASE 3: nothing better, return last valid obs ----
+        # CASE 3: fallback
         return self._last_obs_valid.copy()
 
-    # --- Gazebo reset helper (CLI, robust) ---
+    # --- Gazebo reset helper ---
 
     def _reset_entity_with_retry(
         self,
@@ -283,10 +333,7 @@ class GoalFollowerEnv(Env):
             ]
             try:
                 out = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
+                    cmd, capture_output=True, text=True, timeout=5
                 )
                 if "success: True" in out.stdout or "success=True" in out.stdout:
                     self.ros.get_logger().info(
@@ -301,24 +348,20 @@ class GoalFollowerEnv(Env):
             f"[{name}] Failed to reset after {max_attempts}"
         )
         return False
+
     def _search_full_rotation(self) -> bool:
         """
-        Rotate the robot exactly 360 degrees at a fixed angular speed.
-        Stop immediately if the marker becomes visible.
-
-        Returns:
-            True  -> marker seen at least once
-            False -> completed full rotation without seeing the marker
+        Rotate robot 360° at fixed angular speed, stop if goal becomes visible.
         """
         if self.ros.robot_pose is None:
-            self.ros.get_logger().warn("[SEARCH] No robot odom available, skipping search.")
+            self.ros.get_logger().warn(
+                "[SEARCH] No robot odom available, skipping search."
+            )
             return False
 
-        # Store initial yaw
         _, _, yaw0 = self.ros.robot_pose
-
-        target_rotation = 2.0 * math.pi     # 360 degrees
-        w = self.search_angular_speed       # constant rotation speed
+        target_rotation = 2.0 * math.pi
+        w = self.search_angular_speed
 
         self.ros.get_logger().info(
             f"[SEARCH] Starting 360-degree search at {w:.2f} rad/s"
@@ -329,34 +372,28 @@ class GoalFollowerEnv(Env):
         seen_once = False
 
         while accumulated < target_rotation:
-            # Command rotation
             self.ros.send_cmd(0.0, w)
             self._spin(self.dt)
 
-            # Check visibility
-            obs = self._obs(default=False)
+            # Check visibility via perception
+            _ = self._obs(default=False)
             if self._visible:
-                self.ros.get_logger().info(
-                    f"[SEARCH] Goal seen during search (dist={obs[0]:.2f}, bearing={obs[1]:.2f})"
-                )
+                self.ros.get_logger().info("[SEARCH] Goal seen during search.")
                 seen_once = True
                 break
 
-            # Update accumulated rotation based on yaw change
             if self.ros.robot_pose is not None:
                 _, _, yaw = self.ros.robot_pose
                 dyaw = _wrap(yaw - prev_yaw)
                 accumulated += abs(dyaw)
                 prev_yaw = yaw
 
-        # Stop rotation
         self.ros.send_cmd(0.0, 0.0)
         self._spin(0.1)
 
         self.ros.get_logger().info(
             f"[SEARCH] Finished search; seen={seen_once}, total_rot={accumulated:.2f} rad"
         )
-
         return seen_once
 
     # --- Gym API: reset ---
@@ -364,13 +401,11 @@ class GoalFollowerEnv(Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        # Do NOT start episode timer yet; we will start it after search.
         self._t0 = None
         self._last_seen = None
         self._visible = False
         self._last_goal_pose = None
 
-        # Per-episode logging / trajectory buffers
         self._ep_robot_traj = []
         self._robot_start = None
         self._goal_start = None
@@ -378,40 +413,48 @@ class GoalFollowerEnv(Env):
         self._goal_last = None
         self._min_dist = None
 
-        # Stop robot & reset smoothing state
         self._prev_v_cmd = 0.0
         self._prev_w_cmd = 0.0
-
-        # Reset previous distance for progress-based reward
         self._prev_dist = None
 
         self.ros.send_cmd(0.0, 0.0)
 
-        # Reset robot and goal_marker in Gazebo
-        # Robot stays at origin
+        # Reset robot and goal in Gazebo
         self._reset_entity_with_retry("my_robot", 0.0, 0.0, 0.3, 0.7854)
 
-        # --- Random goal on a circle of radius 7 m around origin ---
-        radius = 7.0  # meters
-        angle = self.np_random.uniform(0.0, 2.0 * math.pi)  # Gym's RNG
+        # Reset random obstacles via your service
+        subprocess.run(
+            [
+                "ros2",
+                "service",
+                "call",
+                "/reset_random_obstacles",
+                "std_srvs/srv/Trigger",
+                "{}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.ros.get_logger().info("[ENV] Random obstacles reset")
+
+        # Random goal on circle of radius 7 m
+        radius = 7.0
+        angle = self.np_random.uniform(0.0, 2.0 * math.pi)
         gx = radius * math.cos(angle)
         gy = radius * math.sin(angle)
         self._reset_entity_with_retry("goal_marker", gx, gy, 0.75, 0.0)
 
-        # Let things settle
         self._spin(0.5)
 
-        # --- NEW: perform a 360-degree search until marker is visible ---
+        # Search for goal
         seen = False
         if self.enable_search_on_reset:
             seen = self._search_full_rotation()
 
-        # Now start episode time AFTER search
         now = time.time()
         self._t0 = now
-        self._last_seen = now  # baseline; will be updated when visible
+        self._last_seen = now
 
-        # Initialize start poses if odom is available (after spawn + search)
         if self.ros.robot_pose is not None:
             rx, ry, _ = self.ros.robot_pose
             self._robot_start = (rx, ry)
@@ -423,12 +466,7 @@ class GoalFollowerEnv(Env):
             self._goal_start = (gx0, gy0)
             self._goal_last = (gx0, gy0)
 
-        # Build initial observation:
-        #  - if search saw the goal, use fresh obs from sensors
-        #  - if not, fallback to last_valid (default=True)
         obs = self._obs(default=not seen)
-
-        # Initialize _prev_dist from initial observation
         self._prev_dist = float(obs[0])
 
         self.ros.get_logger().info(
@@ -437,54 +475,36 @@ class GoalFollowerEnv(Env):
         )
         return obs, {}
 
-
     # --- Gym API: step ---
 
     def step(self, action):
-        # ---- ACTION RANGE & SMOOTHING ----
-        # 1) Clip SAC outputs to [-1, 1]
+        # Clip & map action
         a = np.clip(action, self.action_low, self.action_high).astype(np.float32)
-        a_v, a_w = float(a[0]), float(a[1])
+        v_des = float(a[0]) * self.v_max
+        w_des = float(a[1]) * self.w_max
 
-        # 2) Map to physical velocities
-        v_des = a_v * self.v_max
-        w_des = a_w * self.w_max
-
-        # 3) Smooth commands
+        # Smooth commands
         v_cmd = (1.0 - self.smooth_alpha) * self._prev_v_cmd + self.smooth_alpha * v_des
         w_cmd = (1.0 - self.smooth_alpha) * self._prev_w_cmd + self.smooth_alpha * w_des
-
         self._prev_v_cmd = v_cmd
         self._prev_w_cmd = w_cmd
 
-        # 4) Send to robot
         self.ros.send_cmd(v_cmd, w_cmd)
-
-        # Step ROS
         self._spin(self.dt)
 
-        # Build observation
         obs = self._obs()
-        dist, bearing = float(obs[0]), float(obs[1])
+        dist, bearing, min_obs_depth = float(obs[0]), float(obs[1]), float(obs[2])
 
-        # Ground-truth distance from odom (for logging)
+        # Ground-truth distance (for logging)
         real_dist = float("inf")
         if self.ros.robot_pose is not None and self.ros.goal_pose is not None:
             rx, ry, _ = self.ros.robot_pose
             gx, gy = self.ros.goal_pose
             real_dist = math.sqrt((gx - rx) ** 2 + (gy - ry) ** 2)
-        # Get true velocity
-        vx = (
-            self.ros._last_odom_vx
-            if hasattr(self.ros, '_last_odom_vx')
-            else None
-        )
-        wz = (
-            self.ros._last_odom_wz
-            if hasattr(self.ros, '_last_odom_wz')
-            else None
-        )
-        # --- NEW: record robot pose & goal pose for trajectory logging ---
+
+        vx = self.ros._last_odom_vx
+        wz = self.ros._last_odom_wz
+
         if self.ros.robot_pose is not None:
             rx, ry, _ = self.ros.robot_pose
             self._robot_last = (rx, ry)
@@ -493,63 +513,51 @@ class GoalFollowerEnv(Env):
             gx, gy = self.ros.goal_pose
             self._goal_last = (gx, gy)
 
-        # Update min distance seen so far (based on observation distance)
         if self._min_dist is None or dist < self._min_dist:
             self._min_dist = dist
-        
-        self.ros.get_logger().info(
-            f"[STEP ACTUAL] v_real={vx:.3f}, w_real={wz:.3f}"
-        )
 
-
-        # --------- REWARD SHAPING (FIXED) ----------
-        # Progress term: positive if distance is reduced
-        if self._prev_dist is None:
-            prev_dist = dist
-        else:
-            prev_dist = self._prev_dist
-
-        progress = prev_dist - dist  # >0 if moving closer
+        # --------- REWARD ----------
+        prev_dist = self._prev_dist if self._prev_dist is not None else dist
+        progress = prev_dist - dist
         self._prev_dist = dist
 
         reward = 0.0
-
-        # Small time penalty to encourage faster completion
         reward -= self.c_time * self.dt
 
         if self._visible:
-            # Reward for getting closer
             reward += self.c_progress * progress
-
-            # Penalize being far
             reward -= self.c_dist * dist
-
-            # Penalize large bearing
             reward -= self.c_angle * abs(bearing)
         else:
-            # If marker is not visible, penalize per unit time
             reward -= self.c_lost * self.dt
 
-        # Penalize large control effort (encourage smooth / small motions)
         reward -= self.c_ctrl * (abs(v_cmd) + abs(w_cmd))
 
         term = False
         trunc = False
         reason = ""
 
-        # Success: close enough to the goal while visible
-        if self._visible and dist <= self.success_radius:
+        # Obstacle penalties / collision
+        if min_obs_depth < self.obstacle_collision_radius:
+            reward -= self.R_goal
+            term = True
+            reason = "Collision with obstacle"
+        elif min_obs_depth < self.obstacle_safe_radius:
+            reward -= self.c_obstacle * (self.obstacle_safe_radius - min_obs_depth)
+
+        # Success
+        if not term and self._visible and dist <= self.success_radius:
             reward += self.R_goal
             term = True
             reason = "Reached goal"
 
-        # Failure: lost marker for too long
+        # Lost marker too long
         if (time.time() - self._last_seen) >= self.lost_timeout:
-            reward -= self.R_goal  # strong negative for losing the goal
+            reward -= self.R_goal
             term = True
             reason = "Lost marker timeout"
 
-        # Truncation: episode time limit
+        # Time limit
         if (time.time() - self._t0) >= self.time_limit:
             trunc = True
             reason = "Time limit reached"
@@ -558,8 +566,11 @@ class GoalFollowerEnv(Env):
             f"Step: dist={dist:.2f}, real_dist={real_dist:.2f}, "
             f"bearing={bearing:.2f}, visible={self._visible}, "
             f"v_cmd={v_cmd:.2f}, w_cmd={w_cmd:.2f}, "
+            f"min_obs_depth={min_obs_depth:.2f}, "
+            f"v_real={vx:.3f}, w_real={wz:.3f}, "
             f"reward={reward:.2f}, term={term}, trunc={trunc}, reason={reason}"
         )
+
         info = {
             "reason": reason,
             "robot_start": self._robot_start,
@@ -568,18 +579,17 @@ class GoalFollowerEnv(Env):
             "goal_final": self._goal_last,
             "min_dist": self._min_dist,
             "robot_traj": self._ep_robot_traj,
+            "min_obstacle_depth": min_obs_depth,
         }
         return obs, float(reward), term, trunc, info
 
     def close(self):
         try:
-            # Try to stop the robot nicely
             self.ros.send_cmd(0.0, 0.0)
         except Exception as e:
             print(f"Error sending stop cmd during close: {e}")
 
         try:
-            # Shutdown executor first, then destroy node
             if self.exec is not None:
                 self.exec.shutdown()
         except Exception as e:
@@ -590,5 +600,3 @@ class GoalFollowerEnv(Env):
                 self.ros.destroy_node()
         except Exception as e:
             print(f"Error destroying node: {e}")
-
-

@@ -1,0 +1,20 @@
+<package format="3">
+  <name>follower_obstacle_spawner</name>
+  <version>0.0.0</version>
+  <description>Random obstacle spawner for follower robot RL env</description>
+
+  <maintainer email="you@example.com">mohammadabedi</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>gazebo_ros</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+</package>

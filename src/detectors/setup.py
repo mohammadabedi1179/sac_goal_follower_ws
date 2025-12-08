@@ -30,6 +30,15 @@ setup(
         'console_scripts': [
             'camerainfo_from_yaml = detectors.camerainfo_from_yaml:main',
             'goal_marker_depth = detectors.goal_marker_depth_node:main',
+            'yolo_stereo_detector = detectors.yolo_stereo_detector:main',
+            'stereo_box_depth = detectors.stereo_box_depth:main',
+            'yolo_stereo3d_live = detectors.yolo_stereo3d_live:main',
+            'yolo_stereo_detector_IQR_EMA = detectors.yolo_stereo_detector_IQR_EMA:main',
+            'yolo_stereo_detector_disparity = detectors.yolo_stereo_detector_disparity:main',
+            'stereo_box_depth_IQR_EMA = detectors.stereo_box_depth_IQR_EMA:mian',
+            'stereo_box_depth_disparity = detectors.stereo_box_depth_disparity:main',
+            'stereo_box_depth_from_disparity = detectors.stereo_box_depth_from_disparity:main',   
+            'stereo_box_depth_from_disparity_IQR_EMA = detectors.stereo_box_depth_from_disparity_IQR_EMA:main',         
         ],
     },
 )

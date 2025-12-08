@@ -31,7 +31,7 @@
   <joint name="left_camera_joint" type="fixed">
     <parent link="depth_camera_back_link"/>
     <child link="left_camera_link"/>
-    <origin xyz="0.0058 -0.036 0" rpy="0 0 0"/> <!-- Rotate to length along x (forward), baseline along y -->
+    <origin xyz="0.0058 0.036 0" rpy="0 0 0"/> <!-- Rotate to length along x (forward), baseline along y -->
   </joint>
 
   <link name="left_camera_link">
@@ -65,19 +65,26 @@
         </image>
         <clip>
           <near>0.02</near>
-          <far>50.0</far>
+          <far>10.0</far>
         </clip>
-        <!--<noise>
-          <type>gaussian</type>
-          <mean>0.0</mean>
-          <stddev>0.01</stddev>
-        </noise>-->
       </camera>
       <plugin name="left_camera_controller" filename="libgazebo_ros_camera.so">
         <ros>
-          <namespace>/follower_robot</namespace>
+          <namespace>/follower_robot/depth_cam</namespace>
+          <qos>
+            <topic name="/follower_robot/depth_cam/left/image_raw">
+                <publisher>
+                    <reliability>reliable</reliability>
+                </publisher>
+            </topic>
+            <topic name="/follower_robot/depth_cam/left/camera_info">
+                <publisher>
+                    <reliability>reliable</reliability>
+                </publisher>
+            </topic>
+          </qos>
         </ros>
-        <camera_name>depth_cam/left</camera_name>
+        <camera_name>left</camera_name>
         <frame_name>left_camera_link_optical</frame_name>
         <!--<focal_length>1424.1969168622516</focal_length>
         <cx>812.6941986083984</cx>
@@ -101,7 +108,7 @@
   <joint name="right_camera_joint" type="fixed">
     <parent link="depth_camera_back_link"/>
     <child link="right_camera_link"/>
-    <origin xyz="0.0058 0.036 0" rpy="0 0 0"/> <!-- Rotate to length along x (forward), baseline along y -->
+    <origin xyz="0.0058 -0.036 0" rpy="0 0 0"/> <!-- Rotate to length along x (forward), baseline along y -->
   </joint>
 
   <link name="right_camera_link">
@@ -135,25 +142,32 @@
         </image>
         <clip>
           <near>0.02</near>
-          <far>50.0</far>
+          <far>10.0</far>
         </clip>
-        <!--<noise>
-          <type>gaussian</type>
-          <mean>0.0</mean>
-          <stddev>0.01</stddev>
-        </noise>-->
       </camera>
       <plugin name="right_camera_controller" filename="libgazebo_ros_camera.so">
         <ros>
-          <namespace>/follower_robot</namespace>
+          <namespace>/follower_robot/depth_cam</namespace>
+          <qos>
+            <topic name="/follower_robot/depth_cam/right/image_raw">
+                <publisher>
+                    <reliability>reliable</reliability>
+                </publisher>
+            </topic>
+            <topic name="/follower_robot/depth_cam/right/camera_info">
+                <publisher>
+                    <reliability>reliable</reliability>
+                </publisher>
+            </topic>
+          </qos>
         </ros>
-        <camera_name>depth_cam/right</camera_name>  <!-- Sets prefix for topics: /depth_cam/right/image_raw and /depth_cam/right/camera_info -->
+        <camera_name>right</camera_name>  <!-- Sets prefix for topics: /depth_cam/right/image_raw and /depth_cam/right/camera_info -->
         <frame_name>right_camera_link_optical</frame_name>
         <!--<focal_length>1424.1969168622516</focal_length>
         <cx>812.6941986083984</cx>
         <cy>615.3056335449219</cy>
         <cx_prime>812.6941986083984</cx_prime>-->
-        <hack_baseline>-0.071727</hack_baseline>
+        <hack_baseline>0.071727</hack_baseline>
       </plugin>
     </sensor>
   </gazebo>
@@ -166,9 +180,4 @@
   </joint>
 
   <link name="right_camera_link_optical"/>
-  <plugin name="clock_sync" filename="libgazebo_ros_clock.so">
-    <ros>
-      <namespace>/</namespace>
-    </ros>
-  </plugin>
 </robot>

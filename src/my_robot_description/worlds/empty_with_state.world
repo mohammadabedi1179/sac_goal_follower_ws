@@ -4,7 +4,11 @@
     <!-- Optional: basic models -->
     <include><uri>model://ground_plane</uri></include>
     <include><uri>model://sun</uri></include>
-
+    <scene>
+      <shadows>false</shadows>
+      <grid>true</grid>
+      <origin_visual>true</origin_visual>
+    </scene>
     <!-- Load the ROS state WORLD plugin (gives /gazebo/set_entity_state etc.) -->
     <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
       <ros>
