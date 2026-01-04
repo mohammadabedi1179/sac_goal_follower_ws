@@ -1,0 +1,224 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ====== SRF05 FRONT-LEFT ====== -->
+  <joint name="srf05_front_left_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="srf05_front_left_link"/>
+    <!-- x: forward, y: left, z: up (tune as needed) -->
+    <origin xyz="0.275 0.06 0.01" rpy="0 0 0"/>
+  </joint>
+
+  <link name="srf05_front_left_link">
+    <visual>
+      <geometry>
+        <box size="0.01 0.045 0.02"/>
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.01 0.045 0.02"/>
+      </geometry>
+    </collision>
+    <xacro:inertial_box mass="0.01" x="0.01" y="0.045" z="0.02">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </xacro:inertial_box>
+  </link>
+
+  <gazebo reference="srf05_front_left_link">
+    <material>Gazebo/Black</material>
+    <sensor type="ray" name="srf05_front_left">
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+      <update_rate>50</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <!-- small FOV in front -->
+            <samples>5</samples>
+            <resolution>1</resolution>
+            <min_angle>-0.10</min_angle>
+            <max_angle>0.10</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.04</min>
+          <max>1.0</max>
+          <resolution>0.01</resolution>
+        </range>
+      </ray>
+      <plugin name="srf05_front_left_plugin" filename="libgazebo_ros_ray_sensor.so">
+        <ros>
+          <namespace>/follower_robot</namespace>
+          <!-- publishes ~/out under this namespace; you can remap in launch -->
+        </ros>
+        <output_type>sensor_msgs/Range</output_type>
+        <frame_name>srf05_front_left_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <!-- ====== SRF05 FRONT-RIGHT ====== -->
+  <joint name="srf05_front_right_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="srf05_front_right_link"/>
+    <origin xyz="0.275 -0.06 0.01" rpy="0 0 0"/>
+  </joint>
+
+  <link name="srf05_front_right_link">
+    <visual>
+      <geometry>
+        <box size="0.01 0.045 0.02"/>
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.01 0.045 0.02"/>
+      </geometry>
+    </collision>
+    <xacro:inertial_box mass="0.01" x="0.01" y="0.045" z="0.02">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </xacro:inertial_box>
+  </link>
+
+  <gazebo reference="srf05_front_right_link">
+    <material>Gazebo/Black</material>
+    <sensor type="ray" name="srf05_front_right">
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+      <update_rate>50</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>5</samples>
+            <resolution>1</resolution>
+            <min_angle>-0.10</min_angle>
+            <max_angle>0.10</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.04</min>
+          <max>1.0</max>
+          <resolution>0.01</resolution>
+        </range>
+      </ray>
+      <plugin name="srf05_front_right_plugin" filename="libgazebo_ros_ray_sensor.so">
+        <ros>
+          <namespace>/follower_robot</namespace>
+        </ros>
+        <output_type>sensor_msgs/Range</output_type>
+        <frame_name>srf05_front_right_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <!-- ====== SRF05 LEFT-SIDE (pointing left) ====== -->
+  <joint name="srf05_left_side_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="srf05_left_side_link"/>
+    <!-- put on the left side, yaw +90° so it looks left -->
+    <origin xyz="0.0 0.175 0.01" rpy="0 0 ${pi/2}"/>
+  </joint>
+
+  <link name="srf05_left_side_link">
+    <visual>
+      <geometry>
+        <box size="0.01 0.045 0.02"/>
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.01 0.045 0.02"/>
+      </geometry>
+    </collision>
+    <xacro:inertial_box mass="0.01" x="0.01" y="0.045" z="0.02">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </xacro:inertial_box>
+  </link>
+
+  <gazebo reference="srf05_left_side_link">
+    <material>Gazebo/Black</material>
+    <sensor type="ray" name="srf05_left_side">
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+      <update_rate>50</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>5</samples>
+            <resolution>1</resolution>
+            <min_angle>-0.10</min_angle>
+            <max_angle>0.10</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.04</min>
+          <max>1.0</max>
+          <resolution>0.01</resolution>
+        </range>
+      </ray>
+      <plugin name="srf05_left_side_plugin" filename="libgazebo_ros_ray_sensor.so">
+        <ros>
+          <namespace>/follower_robot</namespace>
+        </ros>
+        <output_type>sensor_msgs/Range</output_type>
+        <frame_name>srf05_left_side_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <!-- ====== SRF05 RIGHT-SIDE (pointing right) ====== -->
+  <joint name="srf05_right_side_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="srf05_right_side_link"/>
+    <!-- right side, yaw -90° so it looks right -->
+    <origin xyz="0.0 -0.175 0.01" rpy="0 0 ${-pi/2}"/>
+  </joint>
+
+  <link name="srf05_right_side_link">
+    <visual>
+      <geometry>
+        <box size="0.01 0.045 0.02"/>
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.01 0.045 0.02"/>
+      </geometry>
+    </collision>
+    <xacro:inertial_box mass="0.01" x="0.01" y="0.045" z="0.02">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </xacro:inertial_box>
+  </link>
+
+  <gazebo reference="srf05_right_side_link">
+    <material>Gazebo/Black</material>
+    <sensor type="ray" name="srf05_right_side">
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+      <update_rate>50</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>5</samples>
+            <resolution>1</resolution>
+            <min_angle>-0.10</min_angle>
+            <max_angle>0.10</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.04</min>
+          <max>1.0</max>
+          <resolution>0.01</resolution>
+        </range>
+      </ray>
+      <plugin name="srf05_right_side_plugin" filename="libgazebo_ros_ray_sensor.so">
+        <ros>
+          <namespace>/follower_robot</namespace>
+        </ros>
+        <output_type>sensor_msgs/Range</output_type>
+        <frame_name>srf05_right_side_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+</robot>

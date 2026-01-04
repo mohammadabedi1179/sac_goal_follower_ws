@@ -30,6 +30,7 @@ EMA_UPDATE_EVERY    = 3         # update EMA every N detections for that object
 OBJECT_EXPIRATION_S = 5.0       # forget object if not seen for this many seconds
 
 DEBUG = False  # set True if you want detailed logs
+PRINT = True
 
 
 class StereoBoxDepthIQR_EMA(Node):
@@ -199,7 +200,8 @@ class StereoBoxDepthIQR_EMA(Node):
             out_msg = String()
             out_msg.data = json.dumps(results, separators=(',', ':'))
             self.depth_pub.publish(out_msg)
-            self.get_logger().info(f'object depths: {out_msg.data}')
+            if PRINT:
+                self.get_logger().info(f'object depths: {out_msg.data}')
         else:
             if DEBUG:
                 self.get_logger().info('[det_cb] No valid objects this frame')

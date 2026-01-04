@@ -18,6 +18,8 @@ setup(
         # NEW: install msg files
         (os.path.join('share', package_name, 'msg'),
          glob('msg/*.msg')),
+        (os.path.join('share', 'detectors', 'launch'),
+          glob('launch/*.launch.py')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -35,10 +37,13 @@ setup(
             'yolo_stereo3d_live = detectors.yolo_stereo3d_live:main',
             'yolo_stereo_detector_IQR_EMA = detectors.yolo_stereo_detector_IQR_EMA:main',
             'yolo_stereo_detector_disparity = detectors.yolo_stereo_detector_disparity:main',
+            'yolo_stereo_detector_disparity_light = detectors.yolo_stereo_detector_disparity_light:main',
             'stereo_box_depth_IQR_EMA = detectors.stereo_box_depth_IQR_EMA:mian',
             'stereo_box_depth_disparity = detectors.stereo_box_depth_disparity:main',
             'stereo_box_depth_from_disparity = detectors.stereo_box_depth_from_disparity:main',   
-            'stereo_box_depth_from_disparity_IQR_EMA = detectors.stereo_box_depth_from_disparity_IQR_EMA:main',         
+            'stereo_box_depth_from_disparity_IQR_EMA = detectors.stereo_box_depth_from_disparity_IQR_EMA:main',
+            'stereo_box_depth_from_disparity_IQR_EMA_synced = detectors.stereo_box_depth_from_disparity_IQR_EMA_synced:main',
+            'ultrasonic_obstacle_distance = detectors.ultrasonic_obstacle_distance:main',         
         ],
     },
 )

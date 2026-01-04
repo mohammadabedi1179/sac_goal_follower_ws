@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-
 from vision_msgs.msg import Detection2DArray
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from stereo_msgs.msg import DisparityImage
-
-
 import numpy as np
 import json
 from cv_bridge import CvBridge

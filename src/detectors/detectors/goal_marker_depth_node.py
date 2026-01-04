@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import math
 from collections import deque
+from typing import Optional, Tuple
 
 import cv2
 import numpy as np
@@ -15,103 +16,99 @@ from message_filters import Subscriber, ApproximateTimeSynchronizer
 
 from detectors_msgs.msg import GoalMarkerState
 
-# Stereo depth params (your previous setup)
+# Stereo depth params
 FOCAL_PX = 555.78
 BASELINE_M = 0.0717
 
-# Left camera intrinsics (from your calibration / old goal_env.py)
-FX_LEFT = 1360.02116
-CX_LEFT = 820.01429
+# Left camera intrinsics (for bearing only)
+FX_LEFT = 555.09075
+CX_LEFT = 319.05936
 
 # Disparity / ROI tuning
 MIN_VALID_PIX = 50          # min valid disparity pixels in ROI
 MIN_DISPARITY = 0.5         # px, below this depth is unreliable
 DEPTH_MIN = 0.2             # m
 DEPTH_MAX = 50.0            # m
-MAX_DISP_DT = 0.05          # max allowed time diff between left image and disparity (sec)
+
+# Set PRINT=True while validating depth estimates. Set to False for silent operation.
+PRINT = False
 
 
 class GoalMarkerDepth(Node):
     def __init__(self):
         super().__init__("goal_marker_depth", namespace="follower_robot")
 
-        # --- Parameters (same names as before, with sensible defaults) ---
-        self.declare_parameter(
-            "left_topic",
-            "/follower_robot/depth_cam/left/image_rect",
-        )
-        self.declare_parameter(
-            "right_topic",
-            "/follower_robot/depth_cam/right/image_rect",
-        )
-        self.declare_parameter("slop", 0.03)
-        self.declare_parameter("min_area", 300.0)
-        self.declare_parameter("show_debug", False)
-        self.declare_parameter("publish_overlay", True)
+        # --- Parameters ---
+        self.declare_parameter("left_topic", "/follower_robot/depth_cam/left/image_rect")
+        self.declare_parameter("disparity_topic", "/follower_robot/depth_cam/disparity")
+        self.declare_parameter("slop", 0.05)
+        self.declare_parameter("min_area", 500.0)
         self.declare_parameter("depth_window", 5)
-        self.declare_parameter(
-            "disparity_topic",
-            "/follower_robot/depth_cam/disparity",
-        )
 
-        left_topic = (
-            self.get_parameter("left_topic").get_parameter_value().string_value
-        )
-        right_topic = (
-            self.get_parameter("right_topic").get_parameter_value().string_value
-        )
-        slop = self.get_parameter("slop").get_parameter_value().double_value
-        self.min_area = (
-            self.get_parameter("min_area").get_parameter_value().double_value
-        )
-        self.show_debug = (
-            self.get_parameter("show_debug").get_parameter_value().bool_value
-        )
-        self.publish_overlay = (
-            self.get_parameter("publish_overlay").get_parameter_value().bool_value
-        )
+        # Performance/robustness knobs
+        self.declare_parameter("det_downscale", 0.5)     # 0.5 = detect on half-res
+        self.declare_parameter("track_margin", 0.5)      # expand last bbox by 50% each side
+        self.declare_parameter("max_lost", 5)            # frames to keep tracking before full search
+
+        left_topic = self.get_parameter("left_topic").get_parameter_value().string_value
         disparity_topic = (
             self.get_parameter("disparity_topic").get_parameter_value().string_value
         )
+        slop = self.get_parameter("slop").get_parameter_value().double_value
+
+        self.min_area = self.get_parameter("min_area").get_parameter_value().double_value
 
         depth_window_param = (
-            self.get_parameter("depth_window")
-            .get_parameter_value()
-            .integer_value
+            self.get_parameter("depth_window").get_parameter_value().integer_value
         )
         if depth_window_param < 1:
-            self.get_logger().warn(
-                f"depth_window={depth_window_param} is invalid; using 1."
-            )
+            self.get_logger().warn(f"depth_window={depth_window_param} is invalid; using 1.")
             depth_window_param = 1
         self.depth_window_size = depth_window_param
         self.depth_history = deque(maxlen=self.depth_window_size)
 
+        self.det_downscale = float(
+            self.get_parameter("det_downscale").get_parameter_value().double_value
+        )
+        if not (0.1 <= self.det_downscale <= 1.0):
+            self.get_logger().warn(
+                f"det_downscale={self.det_downscale} out of [0.1, 1.0]; using 0.5."
+            )
+            self.det_downscale = 0.5
+
+        self.track_margin = float(
+            self.get_parameter("track_margin").get_parameter_value().double_value
+        )
+        self.max_lost = int(
+            self.get_parameter("max_lost").get_parameter_value().integer_value
+        )
+        self.max_lost = max(0, self.max_lost)
+
         self.bridge = CvBridge()
 
-        # --- Subscribers: stereo pair with approximate sync (for red detection & overlays) ---
+        # Precompute HSV thresholds & morphology kernel (avoid per-frame allocations)
+        self._lower1 = np.array([0, 80, 80], dtype=np.uint8)
+        self._upper1 = np.array([10, 255, 255], dtype=np.uint8)
+        self._lower2 = np.array([170, 80, 80], dtype=np.uint8)
+        self._upper2 = np.array([180, 255, 255], dtype=np.uint8)
+        self._kernel = np.ones((10, 10), np.uint8)
+
+        # Simple tracker state (bbox in full-res image coords)
+        self._track_bbox: Optional[Tuple[int, int, int, int]] = None
+        self._lost_count: int = 0
+
+        # --- Subscribers: LEFT image + disparity (approx sync) ---
         self.left_sub = Subscriber(self, Image, left_topic, qos_profile=10)
-        self.right_sub = Subscriber(self, Image, right_topic, qos_profile=10)
+        self.disp_sub = Subscriber(self, DisparityImage, disparity_topic, qos_profile=10)
 
         self.sync = ApproximateTimeSynchronizer(
-            [self.left_sub, self.right_sub],
+            [self.left_sub, self.disp_sub],
             queue_size=10,
             slop=slop,
         )
         self.sync.registerCallback(self.cb_pair)
 
-        # --- Disparity subscriber (from stereo_image_proc) ---
-        self.disp_sub = self.create_subscription(
-            DisparityImage,
-            disparity_topic,
-            self.disparity_cb,
-            10,
-        )
-        self.latest_disp = None
-        self.latest_disp_stamp = None
-
         # --- Publishers ---
-        # Numeric depths (backward-compatible with your current setup)
         self.depth_pub = self.create_publisher(
             Float32, "/follower_robot/depth_cam/goal_marker_depth", 10
         )
@@ -119,23 +116,6 @@ class GoalMarkerDepth(Node):
             Float32, "/follower_robot/depth_cam/goal_marker_depth_raw", 10
         )
 
-        # Overlays
-        if self.publish_overlay:
-            self.left_overlay_pub = self.create_publisher(
-                Image,
-                "/follower_robot/depth_cam/left/goal_overlay",
-                10,
-            )
-            self.right_overlay_pub = self.create_publisher(
-                Image,
-                "/follower_robot/depth_cam/right/goal_overlay",
-                10,
-            )
-        else:
-            self.left_overlay_pub = None
-            self.right_overlay_pub = None
-
-        # High-level state publisher for RL env
         self.state_pub = self.create_publisher(
             GoalMarkerState,
             "/follower_robot/depth_cam/goal_marker_state",
@@ -143,47 +123,24 @@ class GoalMarkerDepth(Node):
         )
 
         self.get_logger().info(
-            f"GoalMarkerDepth node ready: red-cube detection + depth from disparity ROI "
-            f"(MA window={self.depth_window_size})"
+            f"GoalMarkerDepth ready: red goal detection on LEFT + depth from disparity ROI "
+            f"(MA window={self.depth_window_size}, det_downscale={self.det_downscale})"
         )
 
-    # ---- Disparity callback ----
-    def disparity_cb(self, msg: DisparityImage):
-        """Store the latest disparity image (32FC1) and timestamp."""
-        try:
-            disp = self.bridge.imgmsg_to_cv2(msg.image, desired_encoding="32FC1")
-            self.latest_disp = disp
-            self.latest_disp_stamp = msg.header.stamp
-        except Exception as e:
-            self.get_logger().warn(f"disparity_cb: cv_bridge conversion failed: {e}")
-
-    # ---- Stereo callback (left/right images) ----
-    def cb_pair(self, left_msg: Image, right_msg: Image):
-        # Convert to BGR
+    # ---- Synced callback: LEFT image + disparity ----
+    def cb_pair(self, left_msg: Image, disp_msg: DisparityImage):
+        # Convert inputs
         try:
             left_bgr = self.bridge.imgmsg_to_cv2(left_msg, desired_encoding="bgr8")
-            right_bgr = self.bridge.imgmsg_to_cv2(right_msg, desired_encoding="bgr8")
         except Exception as e:
-            self.get_logger().error(f"cv_bridge conversion failed: {e}")
+            self.get_logger().error(f"cv_bridge LEFT conversion failed: {e}")
             return
 
-        # Detect red marker in both images
-        L, l_rect, l_overlay = self.find_red_marker(left_bgr)
-        R, r_rect, r_overlay = self.find_red_marker(right_bgr)
-
-        # Publish overlays (optional)
-        if self.publish_overlay:
-            try:
-                if self.left_overlay_pub is not None:
-                    self.left_overlay_pub.publish(
-                        self.bridge.cv2_to_imgmsg(l_overlay, encoding="bgr8")
-                    )
-                if self.right_overlay_pub is not None:
-                    self.right_overlay_pub.publish(
-                        self.bridge.cv2_to_imgmsg(r_overlay, encoding="bgr8")
-                    )
-            except Exception as e:
-                self.get_logger().warn(f"Overlay publish failed: {e}")
+        try:
+            disp = self.bridge.imgmsg_to_cv2(disp_msg.image, desired_encoding="32FC1")
+        except Exception as e:
+            self.get_logger().warn(f"cv_bridge disparity conversion failed: {e}")
+            return
 
         # Prepare default state (NOT visible)
         state = GoalMarkerState()
@@ -194,65 +151,37 @@ class GoalMarkerDepth(Node):
         state.cx = -1.0
         state.cy = -1.0
 
-        # ---- CASE 1: no detection on either side ----
-        if L is None or R is None:
+        # Detect bbox in LEFT
+        bbox = self._detect_red_bbox_tracked(left_bgr)
+        if bbox is None:
             self.state_pub.publish(state)
-            if self.show_debug:
-                self.get_logger().info("Goal marker not detected.")
             return
 
-        # ---- Ensure we have a disparity image, and it's near-synchronized ----
-        if self.latest_disp is None or self.latest_disp_stamp is None:
+        # Mean disparity within bbox ROI
+        disparity = self._mean_disparity_in_bbox(disp, bbox)
+        if disparity is None or disparity < MIN_DISPARITY:
             self.state_pub.publish(state)
-            if self.show_debug:
-                self.get_logger().info("No disparity image yet, skipping depth.")
+            if PRINT:
+                self.get_logger().info("Goal detected but disparity invalid/too small.")
             return
 
-        # Simple time sync check
-        lt = left_msg.header.stamp.sec + left_msg.header.stamp.nanosec * 1e-9
-        dt = abs(
-            lt
-            - (
-                self.latest_disp_stamp.sec
-                + self.latest_disp_stamp.nanosec * 1e-9
-            )
-        )
-        if dt > MAX_DISP_DT:
-            # Too old / too far: skip this frame
-            self.state_pub.publish(state)
-            if self.show_debug:
-                self.get_logger().info(
-                    f"Disparity too far in time (dt={dt:.3f}s > {MAX_DISP_DT}), skipping."
-                )
-            return
-
-        # ---- Compute mean disparity inside LEFT bbox ----
-        disparity = self.mean_disparity_in_bbox(L)
-        if disparity is None or disparity <= MIN_DISPARITY:
-            self.state_pub.publish(state)
-            if self.show_debug:
-                self.get_logger().info(
-                    f"Invalid or too small disparity in ROI: {disparity}"
-                )
-            return
-
-        # ---- Compute depth from disparity ----
-        depth_m_raw = (FOCAL_PX * BASELINE_M) / disparity
+        depth_m_raw = (FOCAL_PX * BASELINE_M) / float(disparity)
         if not (DEPTH_MIN <= depth_m_raw <= DEPTH_MAX):
             self.state_pub.publish(state)
-            if self.show_debug:
+            if PRINT:
                 self.get_logger().info(
-                    f"Depth out of range: {depth_m_raw:.3f} m (disp={disparity:.3f})"
+                    f"Depth out of range: {depth_m_raw:.3f} m (disp={disparity:.3f}px)"
                 )
             return
 
-        self.depth_history.append(depth_m_raw)
+        # Smooth depth
+        self.depth_history.append(float(depth_m_raw))
         depth_m_smooth = float(sum(self.depth_history) / len(self.depth_history))
 
-        # pixel center from LEFT rect
-        lx, ly, lw, lh = L
-        cx_px = lx + lw / 2.0
-        cy_px = ly + lh / 2.0
+        # Center pixel (LEFT)
+        x, y, w, h = bbox
+        cx_px = x + w / 2.0
+        cy_px = y + h / 2.0
 
         bearing_rad = math.atan2((cx_px - CX_LEFT), FX_LEFT)
 
@@ -262,10 +191,10 @@ class GoalMarkerDepth(Node):
         self.depth_pub.publish(msg_smooth)
 
         msg_raw = Float32()
-        msg_raw.data = depth_m_raw
+        msg_raw.data = float(depth_m_raw)
         self.depth_raw_pub.publish(msg_raw)
 
-        # Fill and publish state as VISIBLE
+        # Publish state
         state.visible = True
         state.depth_m = float(depth_m_smooth)
         state.bearing_rad = float(bearing_rad)
@@ -273,76 +202,101 @@ class GoalMarkerDepth(Node):
         state.cy = float(cy_px)
         self.state_pub.publish(state)
 
-        self.get_logger().info(
-            f"Goal marker depth (smooth): {depth_m_smooth:.3f} m | "
-            f"raw: {depth_m_raw:.3f} m (disp {disparity:.2f}px) | "
-            f"bearing: {bearing_rad:.3f} rad"
-        )
+        if PRINT:
+            self.get_logger().info(
+                f"Goal depth: smooth={depth_m_smooth:.3f} m | raw={depth_m_raw:.3f} m "
+                f"(disp={disparity:.2f}px) | bearing={bearing_rad:.3f} rad | "
+                f"bbox=({x},{y},{w},{h})"
+            )
 
-        if self.show_debug:
-            cv2.imshow("goal_left", l_overlay)
-            cv2.imshow("goal_right", r_overlay)
-            cv2.waitKey(1)
+    # ---- Tracking-aware detection (fast path most frames) ----
+    def _detect_red_bbox_tracked(self, bgr: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+        h, w = bgr.shape[:2]
 
-    # ---- Red detection & rectangle extraction ----
-    def find_red_marker(self, bgr):
-        overlay = bgr.copy()
+        # Try local search around last bbox
+        if self._track_bbox is not None and self._lost_count < self.max_lost:
+            x, y, bw, bh = self._track_bbox
+            mx = int(max(5, bw * self.track_margin))
+            my = int(max(5, bh * self.track_margin))
 
-        hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+            x1 = max(0, x - mx)
+            y1 = max(0, y - my)
+            x2 = min(w, x + bw + mx)
+            y2 = min(h, y + bh + my)
 
-        lower1 = np.array([0, 80, 80], dtype=np.uint8)
-        upper1 = np.array([10, 255, 255], dtype=np.uint8)
-        lower2 = np.array([170, 80, 80], dtype=np.uint8)
-        upper2 = np.array([180, 255, 255], dtype=np.uint8)
+            crop = bgr[y1:y2, x1:x2]
+            local = self._detect_red_bbox(crop)
+            if local is not None:
+                lx, ly, lw, lh = local
+                bbox = (x1 + lx, y1 + ly, lw, lh)
+                self._track_bbox = bbox
+                self._lost_count = 0
+                return bbox
 
-        mask1 = cv2.inRange(hsv, lower1, upper1)
-        mask2 = cv2.inRange(hsv, lower2, upper2)
+            self._lost_count += 1
+
+        # Full-frame search
+        bbox = self._detect_red_bbox(bgr)
+        if bbox is not None:
+            self._track_bbox = bbox
+            self._lost_count = 0
+            return bbox
+
+        # Lost
+        self._track_bbox = None
+        self._lost_count = 0
+        return None
+
+    # ---- Red detection on an image (or crop) ----
+    def _detect_red_bbox(self, bgr: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+        if bgr.size == 0:
+            return None
+
+        # Downscale for speed
+        scale = self.det_downscale
+        if scale < 1.0:
+            small = cv2.resize(bgr, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        else:
+            small = bgr
+
+        hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+
+        mask1 = cv2.inRange(hsv, self._lower1, self._upper1)
+        mask2 = cv2.inRange(hsv, self._lower2, self._upper2)
         mask = cv2.bitwise_or(mask1, mask2)
 
-        kernel = np.ones((10, 10), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+        # Morphology to clean noise
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self._kernel, iterations=1)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel, iterations=1)
 
-        cnts, _ = cv2.findContours(
-            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
+        cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not cnts:
-            return None, None, overlay
+            return None
 
         cnt = max(cnts, key=cv2.contourArea)
-        area = cv2.contourArea(cnt)
-        if area < self.min_area:
-            return None, None, overlay
+        area = float(cv2.contourArea(cnt))
+        min_area_scaled = self.min_area * (scale * scale)
+        if area < min_area_scaled:
+            return None
 
         x, y, w, h = cv2.boundingRect(cnt)
 
-        cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        cv2.putText(
-            overlay,
-            f"red goal (area={int(area)})",
-            (x, max(0, y - 10)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 255, 0),
-            1,
-            cv2.LINE_AA,
-        )
+        # Scale bbox back to full-res coordinates (of the input 'bgr')
+        if scale < 1.0:
+            inv = 1.0 / scale
+            x = int(round(x * inv))
+            y = int(round(y * inv))
+            w = int(round(w * inv))
+            h = int(round(h * inv))
 
-        # Return the same rect for convenience (L,R)
-        return (x, y, w, h), (x, y, w, h), overlay
+        return (x, y, w, h)
 
-    # ---- Mean disparity inside the LEFT bbox ----
-    def mean_disparity_in_bbox(self, rect):
-        """
-        rect = (x, y, w, h) in pixel coords on left rectified image.
-        Uses latest disparity image (aligned with left) and returns mean
-        of valid disparities in the ROI.
-        """
-        if self.latest_disp is None:
-            return None
-
+    # ---- Mean disparity inside bbox on disparity image ----
+    def _mean_disparity_in_bbox(
+        self, disp: np.ndarray, rect: Tuple[int, int, int, int]
+    ) -> Optional[float]:
         x, y, w, h = rect
-        h_img, w_img = self.latest_disp.shape[:2]
+        h_img, w_img = disp.shape[:2]
 
         x1 = max(0, min(w_img - 1, int(x)))
         y1 = max(0, min(h_img - 1, int(y)))
@@ -352,17 +306,19 @@ class GoalMarkerDepth(Node):
         if x2 <= x1 or y2 <= y1:
             return None
 
-        roi = self.latest_disp[y1:y2, x1:x2]
+        roi = disp[y1:y2, x1:x2]
         if roi.size == 0:
             return None
 
-        # Valid disparities: > 0, finite
-        valid = roi[np.isfinite(roi) & (roi > 0.0)]
-        if valid.size < MIN_VALID_PIX:
+        valid = np.isfinite(roi) & (roi > 0.0)
+        n_valid = int(valid.sum())
+        if n_valid < MIN_VALID_PIX:
             return None
 
-        # You can switch to np.median(valid) if you want extra robustness
-        return float(valid.mean())
+        # cv2.mean avoids fancy-index copy; mask must be uint8 (0 or 255)
+        mask = (valid.astype(np.uint8) * 255)
+        mean_val = cv2.mean(roi, mask=mask)[0]
+        return float(mean_val)
 
 
 def main():
@@ -371,11 +327,6 @@ def main():
     try:
         rclpy.spin(node)
     finally:
-        if node.get_parameter("show_debug").get_parameter_value().bool_value:
-            try:
-                cv2.destroyAllWindows()
-            except Exception:
-                pass
         node.destroy_node()
         rclpy.shutdown()
 

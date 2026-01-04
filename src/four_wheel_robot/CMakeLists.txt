@@ -15,7 +15,12 @@ install(DIRECTORY
   description
   models
   worlds
+  config
   DESTINATION share/${PROJECT_NAME}
+)
+install(PROGRAMS
+  four_wheel_robot/skid_mapper.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 ament_package()

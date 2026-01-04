@@ -54,7 +54,7 @@ class _ROS(Node):
         # Buffers
         self.goal_state: GoalMarkerState | None = None
         self.goal_pose = None                 # (x, y) from /goal_marker/odom
-        self.robot_pose = None                # (x, y, yaw) from /model_states (Gazebo truth)
+        self.robot_pose = None                # (x, y, yaw) from /follower_robot/odom
         self._last_odom_vx = 0.0
         self._last_odom_wz = 0.0
         self.obstacles_json: str | None = None
@@ -129,6 +129,7 @@ class _ROS(Node):
         self._last_odom_vx = msg.twist[i].linear.x
         self._last_odom_wz = msg.twist[i].angular.z
 
+
     def _obstacle_cb(self, msg: String):
         # Raw JSON string from stereo_box_depth_from_disparity_IQR_EMA_synced (includes x_m, y_m)
         self.obstacles_json = msg.data
@@ -166,8 +167,6 @@ class GoalFollowerEnv(Env):
         c_dist=0.3,
         c_lost=0.1,
         R_goal=50.0,
-        cam_x=0.4,     # NEW: camera offset wrt base_link (x forward)
-        cam_y=0.0,     # NEW: camera offset wrt base_link (y left)
     ):
         super().__init__()
 
@@ -190,11 +189,17 @@ class GoalFollowerEnv(Env):
         self.ultra_stale_sec = 0.5          # ignore too-old readings
 
         # --------- OBSERVATION SPACE ----------
+        # 12D observation (yours) + 2D potential field = 12? Actually here it's 10D + pf2 = 12D.
+        #
+        # Final observation:
         # [goal_dist, goal_bearing,
         #  obs_x_m, obs_y_m, obs_depth_m,
         #  ultra_front_left, ultra_front_right, ultra_left_side, ultra_right_side,
         #  is_visible,
         #  pf_x, pf_y]
+        #
+        # pf_x, pf_y are unit vector components in base_link frame suggesting direction:
+        # attraction to goal + repulsion from obstacle + pseudo repulsion from ultrasonic.
         self.observation_space = spaces.Box(
             low=np.array(
                 [0.0, -math.pi,   -np.inf, -np.inf, 0.0,    0.0, 0.0, 0.0, 0.0, 0.0,   -1.0, -1.0],
@@ -216,10 +221,6 @@ class GoalFollowerEnv(Env):
         self.lost_timeout = lost_timeout
         self.success_radius = success_radius
         self.time_limit = time_limit
-
-        # NEW: camera offset wrt base_link (used for goal world estimation)
-        self.cam_x = float(cam_x)
-        self.cam_y = float(cam_y)
 
         # Reward parameters
         self.c_time = c_time
@@ -258,7 +259,7 @@ class GoalFollowerEnv(Env):
 
         self._t0 = None
         self._last_seen = None
-        self._last_goal_pose = None   # (x,y) in world frame (estimated)
+        self._last_goal_pose = None
         self._visible = False
 
         # For progress-based reward
@@ -299,17 +300,6 @@ class GoalFollowerEnv(Env):
             dtype=np.float32
         )
 
-        # --- anti-stuck shaping ---
-        self.progress_deadzone = 0.01   # meters per step (with dt=0.1)
-        self.stuck_penalty = 0.05       # penalty when |progress| < deadzone
-
-        # --- visibility shaping ---
-        self.visible_bonus = 0.2
-
-        # --- potential-field shaping ---
-        self.pf_align_gain = 0.3        # strength of alignment reward
-        self.pf_repulsion_gain = 1.0    # how strongly obstacles contribute to PF
-
     # --- ROS spin helper ---
 
     def _spin(self, seconds: float) -> None:
@@ -322,9 +312,6 @@ class GoalFollowerEnv(Env):
     def _compute_nearest_obstacle_local(self) -> tuple[float, float, float]:
         """
         Returns (x_m, y_m, depth_m) for the nearest valid obstacle in base_link frame.
-
-        NOTE:
-          Your obstacle JSON claims x_m,y_m are already in base_link frame, so we do NOT apply cam offset here.
         """
         if getattr(self.ros, "obstacles_json", None) is None:
             return (self.max_obstacle_depth, 0.0, self.max_obstacle_depth)
@@ -408,8 +395,8 @@ class GoalFollowerEnv(Env):
     ) -> tuple[float, float]:
         """
         Computes a unit potential field vector (pf_x, pf_y) in base_link frame.
-        - Attractive: toward goal bearing (yaw-compatible: left positive)
-        - Repulsive: from nearest stereo obstacle (base_link local x,y)
+        - Attractive: toward goal bearing
+        - Repulsive: from nearest stereo obstacle (if within pf_r0_cam)
         - Repulsive: from ultrasonic readings using pseudo directions
         """
         # attractive (unit)
@@ -463,12 +450,6 @@ class GoalFollowerEnv(Env):
         [goal_dist, goal_bearing, obs_x_m, obs_y_m, obs_depth_m,
          ultra_fl, ultra_fr, ultra_ls, ultra_rs, is_visible,
          pf_x, pf_y]
-
-        IMPORTANT CHANGES:
-          - When visible, compute goal world pose from CAMERA origin (cam offset) + (depth, bearing)
-          - Convert bearing sign to yaw-compatible sign: b_yaw = -bearing_cam
-          - Output bearing in yaw convention (left positive) so PF + rewards are consistent
-          - Compute goal_dist consistently as distance from robot base to estimated goal world pose
         """
         if default:
             return self._last_obs_valid.copy()
@@ -489,33 +470,18 @@ class GoalFollowerEnv(Env):
             self._visible = True
             self._last_seen = time.time()
 
-            depth_cam = float(st.depth_m)
+            d = float(st.depth_m)
+            b = _wrap(float(st.bearing_rad))
 
-            # Camera bearing convention (RIGHT positive). Convert to yaw-compatible (LEFT positive).
-            b_cam = float(st.bearing_rad)
-            b_yaw = -b_cam
-            b = _wrap(b_yaw)
-
-            goal_dist = depth_cam  # fallback if robot pose not available
-
-            # Estimate world-frame goal pose from CAMERA origin + (depth, bearing)
-            if self.ros.robot_pose is not None and math.isfinite(depth_cam) and depth_cam > 0.0:
+            # Estimate world-frame goal pose from robot pose + (d, b)
+            if self.ros.robot_pose is not None:
                 rx, ry, ryaw = self.ros.robot_pose
-
-                # camera origin in world
-                rx_cam = rx + self.cam_x * math.cos(ryaw) - self.cam_y * math.sin(ryaw)
-                ry_cam = ry + self.cam_x * math.sin(ryaw) + self.cam_y * math.cos(ryaw)
-
-                theta = ryaw + b_yaw
-                gx = rx_cam + depth_cam * math.cos(theta)
-                gy = ry_cam + depth_cam * math.sin(theta)
+                gx = rx + d * math.cos(ryaw + b)
+                gy = ry + d * math.sin(ryaw + b)
                 self._last_goal_pose = (gx, gy)
 
-                # Use robot-base distance to goal for consistency across visible / not-visible cases
-                goal_dist = float(math.hypot(gx - rx, gy - ry))
-
             pf_x, pf_y = self._compute_potential_field(
-                goal_bearing=b,  # yaw-compatible bearing
+                goal_bearing=b,
                 obs_x=obs_x,
                 obs_y=obs_y,
                 obs_depth=obs_depth,
@@ -526,7 +492,7 @@ class GoalFollowerEnv(Env):
             )
 
             obs = np.array(
-                [goal_dist, b, obs_x, obs_y, obs_depth, ultra_fl, ultra_fr, ultra_ls, ultra_rs, 1.0, pf_x, pf_y],
+                [d, b, obs_x, obs_y, obs_depth, ultra_fl, ultra_fr, ultra_ls, ultra_rs, 1.0, pf_x, pf_y],
                 np.float32
             )
 
@@ -536,7 +502,7 @@ class GoalFollowerEnv(Env):
             dx = self._last_goal_pose[0] - rx
             dy = self._last_goal_pose[1] - ry
             dist = math.sqrt(dx * dx + dy * dy)
-            bearing = _wrap(math.atan2(dy, dx) - ryaw)  # yaw-compatible by construction
+            bearing = _wrap(math.atan2(dy, dx) - ryaw)
 
             pf_x, pf_y = self._compute_potential_field(
                 goal_bearing=bearing,
@@ -583,6 +549,7 @@ class GoalFollowerEnv(Env):
             self.ros.get_logger().info(f"[{name}] Reset attempt {attempt + 1}/{max_attempts}")
             qz, qw = math.sin(yaw / 2.0), math.cos(yaw / 2.0)
 
+            # include twist zeros to kill leftover momentum
             req = (
                 "{state: {"
                 f"name: '{name}', "
@@ -763,8 +730,7 @@ class GoalFollowerEnv(Env):
         self._prev_dist = float(obs[0])
 
         self.ros.get_logger().info(
-            f"Episode reset completed: initial obs={obs}, goal_spawn=({gx:.2f}, {gy:.2f}), seen_in_search={seen}, "
-            f"cam_offset=(x={self.cam_x:.2f}, y={self.cam_y:.2f})"
+            f"Episode reset completed: initial obs={obs}, goal_spawn=({gx:.2f}, {gy:.2f}), seen_in_search={seen}"
         )
         return obs, {}
 
@@ -829,65 +795,19 @@ class GoalFollowerEnv(Env):
         self._prev_dist = dist
 
         reward = 0.0
-
-        # (1) small per-step time penalty
         reward -= self.c_time * self.dt
-
-        # (2) reward progress toward the goal
         reward += self.c_progress * progress
 
-        # (3) anti-stuck penalty
-        if abs(progress) < self.progress_deadzone:
-            reward -= self.stuck_penalty
-
-        # (4) discourage going backwards when goal visible
-        if self._visible and v_cmd < -0.05 and dist > self.success_radius * 2.0:
-            reward -= 0.05
-
-        # (5) visibility shaping + bearing penalty only when close-ish
         if self._visible:
-            reward += self.visible_bonus
+            reward += 0.2
             if dist < 2.5:
                 reward -= self.c_angle * abs(bearing)
-        else:
-            reward -= 0.05
 
-        # (6) potential-field alignment reward
-        goal_v = np.array([math.cos(bearing), math.sin(bearing)], dtype=np.float32)
-
-        rep_v = np.array([0.0, 0.0], dtype=np.float32)
-        if (min_obs_depth < self.obstacle_safe_radius) and (abs(obs_y) < 1e6) and (obs_x < self.max_obstacle_depth * 0.9):
-            r2 = float(obs_x * obs_x + obs_y * obs_y)
-            if r2 > 1e-6:
-                rep_dir = np.array([-obs_x, -obs_y], dtype=np.float32) / math.sqrt(r2)
-                strength = float((self.obstacle_safe_radius - min_obs_depth) / self.obstacle_safe_radius)
-                strength = max(0.0, min(1.0, strength))
-                rep_v = strength * rep_dir
-
-        pf_v = goal_v + self.pf_repulsion_gain * rep_v
-
-        pf_norm = float(np.linalg.norm(pf_v))
-        if pf_norm > 1e-6:
-            pf_v = pf_v / pf_norm
-
-        act_v = np.array(
-            [max(-1.0, min(1.0, v_cmd / self.v_max)),
-             max(-1.0, min(1.0, w_cmd / self.w_max))],
-            dtype=np.float32
-        )
-        act_norm = float(np.linalg.norm(act_v))
-        if act_norm > 1e-6:
-            act_v = act_v / act_norm
-
-        align = float(np.dot(act_v, pf_v))
-        reward += self.pf_align_gain * align
-
-        # ---------- termination + safety penalties ----------
         term = False
         trunc = False
         reason = ""
 
-        # Ultrasonic collision / penalties
+        # Ultrasonic collision / penalties (short-range safety)
         if min_ultra < self.ultra_collision_radius:
             reward -= 2.0 * self.R_goal
             term = True
@@ -951,10 +871,6 @@ class GoalFollowerEnv(Env):
             },
             "min_ultrasonic_distance": min_ultra,
             "potential_field": (pf_x, pf_y),
-
-            # NEW: expose camera offset and last goal world pose estimate for debugging
-            "cam_offset_base": (self.cam_x, self.cam_y),
-            "last_goal_pose_est_world": self._last_goal_pose,
         }
 
         return obs, float(reward), term, trunc, info

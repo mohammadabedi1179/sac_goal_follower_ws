@@ -1,10 +1,12 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, ExecuteProcess, GroupAction
+from launch.actions import IncludeLaunchDescription, ExecuteProcess, GroupAction, RegisterEventHandler
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node, PushRosNamespace, SetRemap, ComposableNodeContainer
 from launch_ros.substitutions import FindPackageShare
+from launch.event_handlers import OnProcessExit
+
 from launch.substitutions import PathJoinSubstitution
 from launch_ros.descriptions import ComposableNode
 from launch.conditions import IfCondition, UnlessCondition
@@ -36,8 +38,6 @@ def generate_launch_description():
     )
     gui = LaunchConfiguration('gui')
     
-    # ... (RSP and World definition)
-    
     # 2. **ALWAYS** Launch the Server (headless core)
     # Note: Using 'gzserver' guarantees the simulation starts headless.
     gazebo_server = ExecuteProcess(
@@ -63,7 +63,7 @@ def generate_launch_description():
     spawn_entity = Node(
         package="gazebo_ros",
         executable="spawn_entity.py",
-        arguments=["-topic", "robot_description",
+        arguments=["-topic", "/follower_robot/robot_description",
                    "-entity", "my_robot",
                    "-x", "0.0", "-y", "0.0", "-z", "0.30", "-Y", "0.7854"],
         output="screen",
@@ -185,6 +185,60 @@ def generate_launch_description():
         ],
         output='screen',
     )
+    # --- Controller spawners (Option B) ---
+    # NOTE:
+    # gazebo_ros2_control creates the controller_manager under your namespace.
+    # So we point spawners to /follower_robot/controller_manager explicitly.
+    controller_manager_path = "/follower_robot/controller_manager"
+
+    joint_state_broadcaster_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=[
+            "joint_state_broadcaster",
+            "--controller-manager", controller_manager_path,
+        ],
+        output="screen",
+        parameters=[{"use_sim_time": True}],
+    )
+
+    wheels_velocity_controller_spawner = Node(
+    package="controller_manager",
+    executable="spawner",
+    arguments=[
+        "wheels_velocity_controller",
+        "--controller-manager", "/follower_robot/controller_manager",
+    ],
+    output="screen",
+    )
+
+
+    diff_drive_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=[
+            "diff_drive_controller",
+            "--controller-manager", controller_manager_path,
+        ],
+        output="screen",
+        parameters=[{"use_sim_time": True}],
+    )
+
+    # Start controllers only AFTER the entity is spawned
+    start_controllers_after_spawn = RegisterEventHandler(
+        OnProcessExit(
+            target_action=spawn_entity,
+            on_exit=[
+                joint_state_broadcaster_spawner,
+                wheels_velocity_controller_spawner,
+            ],
+        )
+    )
+    skid_mapper_node = Node(
+    package="my_robot_description",
+    executable="skid_mapper.py",
+    output="screen",
+)
 
     return LaunchDescription([
                               gui_arg,
@@ -192,5 +246,7 @@ def generate_launch_description():
                               gazebo_server,         # Runs every time
                               gazebo_client,         # Runs ONLY if gui:=true
                               spawn_entity,
+                              start_controllers_after_spawn,
+                              skid_mapper_node,
                               stereo_and_point_cloud_container
                              ])

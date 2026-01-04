@@ -12,6 +12,8 @@ import tempfile
 import os
 import shutil
 
+PRINT = True
+
 
 
 class YoloStereoDetector(Node):
@@ -26,7 +28,7 @@ class YoloStereoDetector(Node):
         self.class_names = self.model.model.names
 
         # ✅ NEW: only keep these classes
-        self.allowed_classes = {"person", "fire hydrant", "car"}
+        self.allowed_classes = {"person"}
 
         # topics you have
         left_topic = '/follower_robot/depth_cam/left/image_rect'
@@ -58,11 +60,11 @@ class YoloStereoDetector(Node):
             self.get_logger().error(f'[cv_bridge] failed on {side}: {e}')
             return
 
-        self.get_logger().info(
-            f'[{side}] after cv_bridge: type={type(cv_img)}, '
-            f'dtype={getattr(cv_img, "dtype", None)}, '
-            f'shape={getattr(cv_img, "shape", None)}'
-        )
+        #self.get_logger().info(
+        #    f'[{side}] after cv_bridge: type={type(cv_img)}, '
+        #    f'dtype={getattr(cv_img, "dtype", None)}, '
+        #    f'shape={getattr(cv_img, "shape", None)}'
+        #)
 
         # 2) Ensure we have a proper numpy uint8 HxWx3 array
         if not isinstance(cv_img, np.ndarray):
@@ -132,7 +134,8 @@ class YoloStereoDetector(Node):
             t0 = time.time()
             results = self.model.track(img_path, persist=True, tracker=self.tracker_config, imgsz=640, verbose=False)
             dt = time.time() - t0
-            self.get_logger().info(f'YOLO {side} inference: {dt:.3f}s')
+            if PRINT:
+                self.get_logger().info(f'YOLO {side} inference: {dt:.3f}s')
         except Exception as e:
             self.get_logger().error(f'[YOLO {side}] model.predict error: {e}')
             shutil.rmtree(tmp_dir, ignore_errors=True)

@@ -1,0 +1,23 @@
+/follower_robot/controller_manager:
+  ros__parameters:
+    update_rate: 100
+    use_sim_time: true
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    wheels_velocity_controller:
+      type: velocity_controllers/JointGroupVelocityController
+
+/follower_robot/joint_state_broadcaster:
+  ros__parameters: {}
+
+# This controller is created under the same namespace by controller_manager
+/follower_robot/wheels_velocity_controller:
+  ros__parameters:
+    joints:
+      - FL_joint
+      - BL_joint
+      - FR_joint
+      - BR_joint
+    interface_name: velocity

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Pass controller YAML from launch via xacro mapping -->
+  <xacro:macro name="add_drive_plugins" params="controller_yaml">
+    <gazebo>
+      <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+        <ros>
+          <namespace>/follower_robot</namespace>
+        </ros>
+
+        <!-- Tell gazebo_ros2_control where to fetch the URDF -->
+        <robot_param>robot_description</robot_param>
+        <robot_param_node>robot_state_publisher</robot_param_node>
+
+        <!-- Load controller params -->
+        <parameters>${controller_yaml}</parameters>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+
+</robot>

@@ -1,23 +1,13 @@
 <?xml version="1.0"?>
-<robot name="my_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
   <xacro:include filename="inertial_macros.xacro" />
+  <xacro:macro name="my_robot_core" params="">
 
   <!-- ============================================================= -->
   <!-- BASE_LINK IS NOW AT THE EXACT CENTER OF THE FOUR WHEELS       -->
   <!-- ============================================================= -->
   <link name="base_link">
-    <!-- Tiny visual so you can see where base_link really is in RViz/Gazebo -->
-    <!--<visual>
-      <origin xyz="0 0 0.05" rpy="0 0 0"/>
-      <geometry>
-        <cylinder radius="0.02" length="0.1"/>
-      </geometry>
-      <material name="blue">
-        <color rgba="0 0 1 0.8"/>
-      </material>
-    </visual>-->
   </link>
-
   <!-- ============================================================= -->
   <!-- CHASSIS (the old "base") is now attached offset from the      -->
   <!-- centered base_link so everything stays in the same place      -->
@@ -26,10 +16,10 @@
     <parent link="base_link"/>
     <child link="chassis"/>
     <!-- This moves the entire old robot so base_link ends up in the middle -->
-    <origin xyz="-0.3295 0.33054 0" rpy="0 0 0"/>
+    <origin xyz="-0.4 0.0 0" rpy="0 0 0"/>
   </joint>
 
-  <link name="chassis">
+  <!--<link name="chassis">
     <inertial>
       <origin xyz="0.3539 -0.33747 0.041313" rpy="0 0 0"/>
       <mass value="25.4291"/>
@@ -48,6 +38,27 @@
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
         <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/base_link.stl"/>
+      </geometry>
+    </collision>
+  </link>-->
+  <link name="chassis">
+    <xacro:inertial_box mass="25.0" x="0.8" y="0.6108" z="0.15">
+    <origin xyz="0.4 0.0 0.0925" rpy= "0 0 0"/>
+    </xacro:inertial_box>
+    <visual>
+      <origin xyz="0.0705 0.3354 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/base_link.stl"/>
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1"/>
+      </material>
+    </visual>
+
+    <collision>
+      <origin xyz="0.4 0.0 0.0925" rpy="0 0 0"/> 
+      <geometry>
+        <box size="0.8 0.6108 0.15"/>
       </geometry>
     </collision>
   </link>
@@ -93,7 +104,7 @@
   </joint>
 
   <!-- ==================== WHEEL LINKS (unchanged) ==================== -->
-  <link name="BL_link">
+  <!--<link name="BL_link">
     <inertial>
       <origin xyz="4.8746E-06 -0.03315 4.7136E-11" rpy="0 0 0"/>
       <mass value="1.4314"/>
@@ -107,18 +118,40 @@
       <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
     </visual>
     <collision>
+      <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+      <geometry>
+        <cylinder length="0.04" radius="0.0925"/>
+      </geometry>
+    </collision>
+  </link>-->
+  <link name="BL_link">
+    <xacro:inertial_cylinder mass="1.4314" radius="0.0925" length="0.04">
+    <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+    </xacro:inertial_cylinder>
+
+    <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
         <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/BL_link.stl"/>
+      </geometry>
+      <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+      <geometry>
+        <cylinder length="0.04" radius="0.0925"/>
       </geometry>
     </collision>
   </link>
   <gazebo reference="BL_link">
     <material>Gazebo/Grey</material>
-    <mu1>2.0</mu1><mu2>2.0</mu2>
+    <mu1>1.0</mu1>
+    <mu2>0.1</mu2>
+    <fdir1>1 0 0</fdir1>
   </gazebo>
 
-  <link name="BR_link">
+  <!--<link name="BR_link">
     <inertial>
       <origin xyz="4.8766E-06 0.03315 -5.3194E-09" rpy="0 0 0"/>
       <mass value="1.4314"/>
@@ -132,18 +165,38 @@
       <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
     </visual>
     <collision>
+      <origin xyz="0 0 0" rpy="${pi/2} 0 0"/> <geometry>
+        <cylinder length="0.04" radius="0.0925"/>
+      </geometry>
+    </collision>
+  </link>-->
+  <link name="BR_link">
+    <xacro:inertial_cylinder mass="1.4314" radius="0.0925" length="0.04">
+    <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+    </xacro:inertial_cylinder>
+
+    <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
         <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/BR_link.stl"/>
+      </geometry>
+      <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0" rpy="${pi/2} 0 0"/> <geometry>
+        <cylinder length="0.04" radius="0.0925"/>
       </geometry>
     </collision>
   </link>
   <gazebo reference="BR_link">
     <material>Gazebo/Grey</material>
-    <mu1>2.0</mu1><mu2>2.0</mu2>
+    <mu1>1.0</mu1>
+    <mu2>0.1</mu2>
+    <fdir1>1 0 0</fdir1>
   </gazebo>
 
-  <link name="FL_link">
+  <!--<link name="FL_link">
     <inertial>
       <origin xyz="-4.8748E-06 -0.03315 5.0964E-11" rpy="0 0 0"/>
       <mass value="1.4314"/>
@@ -157,18 +210,40 @@
       <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
     </visual>
     <collision>
+      <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+      <geometry>
+        <cylinder length="0.04" radius="0.0925"/>
+      </geometry>
+    </collision>
+  </link>-->
+  <link name="FL_link">
+    <xacro:inertial_cylinder mass="1.4314" radius="0.0925" length="0.04">
+    <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+    </xacro:inertial_cylinder>
+
+    <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
         <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/FL_link.stl"/>
       </geometry>
+      <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+      <geometry>
+        <cylinder length="0.04" radius="0.0925"/>
+      </geometry>
     </collision>
-  </link>
+    </link>
   <gazebo reference="FL_link">
     <material>Gazebo/Grey</material>
-    <mu1>2.0</mu1><mu2>2.0</mu2>
+    <mu1>1.0</mu1>
+    <mu2>0.1</mu2>
+    <fdir1>1 0 0</fdir1>
   </gazebo>
 
-  <link name="FR_link">
+  <!--<link name="FR_link">
     <inertial>
       <origin xyz="-4.8761E-06 0.03315 -5.4365E-09" rpy="0 0 0"/>
       <mass value="1.4314"/>
@@ -182,15 +257,37 @@
       <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
     </visual>
     <collision>
+    <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+    <geometry>
+      <cylinder length="0.04" radius="0.0925"/>
+    </geometry>
+  </collision>
+  </link>-->
+  <link name="FR_link">
+    <xacro:inertial_cylinder mass="1.4314" radius="0.0925" length="0.04">
+    <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+    </xacro:inertial_cylinder>
+
+    <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
         <mesh filename="file://$(find my_robot_description)/models/my_robot_description/meshes/FR_link.stl"/>
+      </geometry>
+      <material name=""><color rgba="0.79216 0.81961 0.93333 1"/></material>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+      <geometry>
+        <cylinder length="0.04" radius="0.0925"/>
       </geometry>
     </collision>
   </link>
   <gazebo reference="FR_link">
     <material>Gazebo/Grey</material>
-    <mu1>2.0</mu1><mu2>2.0</mu2>
+    <mu1>1.0</mu1>
+    <mu2>0.1</mu2>
+    <fdir1>1 0 0</fdir1>
   </gazebo>
 
   <!-- HANDLE (also moved with the same offset) -->
@@ -260,5 +357,35 @@
     <joint name="BR_joint"><hardwareInterface>velocity</hardwareInterface></joint>
     <actuator name="right_back_wheel_motor"><hardwareInterface>velocity</hardwareInterface><mechanicalReduction>1</mechanicalReduction></actuator>
   </transmission>
+    <ros2_control name="GazeboSystem" type="system">
+  <hardware>
+      <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+  </hardware>
+
+  <joint name="FL_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="velocity"/>
+      <state_interface name="position"/>
+  </joint>
+
+  <joint name="BL_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="velocity"/>
+      <state_interface name="position"/>
+  </joint>
+
+  <joint name="FR_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="velocity"/>
+      <state_interface name="position"/>
+  </joint>
+
+  <joint name="BR_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="velocity"/>
+      <state_interface name="position"/>
+  </joint>
+  </ros2_control>
+  </xacro:macro>
 
 </robot>
