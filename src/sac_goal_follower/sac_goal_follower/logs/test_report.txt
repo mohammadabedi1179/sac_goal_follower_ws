@@ -1,0 +1,92 @@
+============================================================
+  SAC MODEL EVALUATION REPORT
+============================================================
+Model: Static_goal_marker_random_position_3_static_obstacles_in_the_FOV_1M_steps_TTC_80p_sccession_training_95p_succession_test/models/sac_goal_follower_best.zip
+Episodes: 50
+Deterministic: True
+Total time: 2562.9s (42.7 min)
+
+── OUTCOMES ──
+  Success (goal):       39  (78.0%)
+  Collision:             0  (0.0%)
+  Timeout:              11  (22.0%)
+
+── REWARD ──
+  Mean:   105.63
+  Std:    53.15
+  Median: 78.42
+  Min:    62.48
+  Max:    215.72
+
+  Reward (goal): mean=77.69 | std=4.87 | n=39
+  Reward (timeout): mean=204.66 | std=13.47 | n=11
+
+── EPISODE LENGTH ──
+  Mean:   234.5 steps
+  Median: 85.5 steps
+  Min:    61 | Max: 767
+
+── NAVIGATION EFFICIENCY ──
+  min_dist to goal: mean=2.57m | median=1.47m
+  Start-goal dist:  mean=7.03m
+  Steps/meter (successes): mean=12.0 | median=10.8
+
+── SAFETY ──
+  min_obstacle_depth:      mean=1.895m | min=0.906m
+  min_ultrasonic_distance: mean=0.893m | min=0.396m
+  Shield interventions/ep: mean=1.4 | max=18
+  Shield rate (frac):      mean=0.012 | max=0.183
+
+── PER-EPISODE DETAILS ──
+  ep=  1 | R=   81.00 | len= 171 | goal       | shield=  0 | min_obs=1.1316002160310745 | min_ultra=0.7962813377380371
+  ep=  2 | R=   79.46 | len=  71 | goal       | shield=  0 | min_obs=1.6332624852657318 | min_ultra=0.720392644405365
+  ep=  3 | R=   77.14 | len=  63 | goal       | shield=  0 | min_obs=2.4052290618419647 | min_ultra=0.6985398530960083
+  ep=  4 | R=  189.92 | len= 766 | timeout    | shield=  0 | min_obs=3.8837572932243347 | min_ultra=   1.0
+  ep=  5 | R=   79.29 | len=  99 | goal       | shield=  0 | min_obs=1.739410161972046 | min_ultra=   1.0
+  ep=  6 | R=   77.44 | len=  61 | goal       | shield=  0 | min_obs=2.232160270214081 | min_ultra=0.8300547003746033
+  ep=  7 | R=   77.89 | len=  70 | goal       | shield=  0 | min_obs=1.8214032053947449 | min_ultra=   1.0
+  ep=  8 | R=   76.67 | len=  68 | goal       | shield=  0 | min_obs=1.5698449313640594 | min_ultra=   1.0
+  ep=  9 | R=   76.94 | len=  95 | goal       | shield=  2 | min_obs=1.1320408433675766 | min_ultra=0.6540666222572327
+  ep= 10 | R=   77.42 | len=  66 | goal       | shield=  0 | min_obs=1.429608315229416 | min_ultra=   1.0
+  ep= 11 | R=   75.82 | len=  69 | goal       | shield=  1 | min_obs=1.3409166038036346 | min_ultra=   1.0
+  ep= 12 | R=   79.11 | len=  76 | goal       | shield=  0 | min_obs=1.553473323583603 | min_ultra=0.5417773127555847
+  ep= 13 | R=   69.67 | len=  96 | goal       | shield=  8 | min_obs=1.3339373469352722 | min_ultra=0.45554280281066895
+  ep= 14 | R=   79.69 | len= 100 | goal       | shield=  0 | min_obs=1.207069605588913 | min_ultra=0.9726113677024841
+  ep= 15 | R=   76.75 | len=  63 | goal       | shield=  0 | min_obs=2.315949499607086 | min_ultra=   1.0
+  ep= 16 | R=   78.22 | len=  69 | goal       | shield=  0 | min_obs=1.3962756097316742 | min_ultra=0.9343751072883606
+  ep= 17 | R=   78.17 | len= 100 | goal       | shield=  5 | min_obs=1.3835842907428741 | min_ultra=   1.0
+  ep= 18 | R=   77.45 | len=  86 | goal       | shield=  0 | min_obs=1.221473589539528 | min_ultra=0.9671425223350525
+  ep= 19 | R=   78.48 | len=  85 | goal       | shield=  0 | min_obs=1.8911881744861603 | min_ultra=0.9880693554878235
+  ep= 20 | R=  211.02 | len= 767 | timeout    | shield=  0 | min_obs=2.888241410255432 | min_ultra=   1.0
+  ep= 21 | R=   93.57 | len= 146 | goal       | shield=  0 | min_obs=1.710774451494217 | min_ultra=0.8890434503555298
+  ep= 22 | R=   78.42 | len=  91 | goal       | shield=  0 | min_obs=1.8736842274665833 | min_ultra=   1.0
+  ep= 23 | R=   77.32 | len=  69 | goal       | shield=  0 | min_obs=1.824740618467331 | min_ultra=   1.0
+  ep= 24 | R=   77.17 | len=  68 | goal       | shield=  0 | min_obs=1.8694180250167847 | min_ultra=   1.0
+  ep= 25 | R=  186.65 | len= 767 | timeout    | shield=  0 | min_obs=3.4696823358535767 | min_ultra=   1.0
+  ep= 26 | R=  215.72 | len= 765 | timeout    | shield=  0 | min_obs=2.977217733860016 | min_ultra=   1.0
+  ep= 27 | R=   77.47 | len=  66 | goal       | shield=  0 | min_obs=1.8551741540431976 | min_ultra=   1.0
+  ep= 28 | R=  213.12 | len= 767 | timeout    | shield=  2 | min_obs=2.553313970565796 | min_ultra=   1.0
+  ep= 29 | R=  174.54 | len= 767 | timeout    | shield= 18 | min_obs=2.328532338142395 | min_ultra=   1.0
+  ep= 30 | R=   77.01 | len=  64 | goal       | shield=  0 | min_obs=2.064908891916275 | min_ultra=   1.0
+  ep= 31 | R=  213.07 | len= 767 | timeout    | shield=  0 | min_obs=3.4744518995285034 | min_ultra=   1.0
+  ep= 32 | R=   78.44 | len=  88 | goal       | shield=  0 | min_obs=1.7261280119419098 | min_ultra=   1.0
+  ep= 33 | R=  212.53 | len= 765 | timeout    | shield=  0 | min_obs=2.4061061441898346 | min_ultra=   1.0
+  ep= 34 | R=   79.74 | len=  84 | goal       | shield=  0 | min_obs=1.8151842057704926 | min_ultra=0.9259047508239746
+  ep= 35 | R=  206.63 | len= 766 | timeout    | shield=  0 | min_obs=3.187415301799774 | min_ultra=   1.0
+  ep= 36 | R=   75.87 | len=  70 | goal       | shield=  2 | min_obs=1.8808145821094513 | min_ultra=0.5896652340888977
+  ep= 37 | R=   78.64 | len=  80 | goal       | shield=  0 | min_obs=1.2300126254558563 | min_ultra=0.9085109829902649
+  ep= 38 | R=   63.03 | len=  93 | goal       | shield= 17 | min_obs=1.207888424396515 | min_ultra=0.42407962679862976
+  ep= 39 | R=   78.06 | len= 102 | goal       | shield=  2 | min_obs=1.5963783860206604 | min_ultra=0.8668118119239807
+  ep= 40 | R=   62.48 | len=  74 | goal       | shield= 12 | min_obs=1.6175609827041626 | min_ultra=0.39611339569091797
+  ep= 41 | R=   77.08 | len=  75 | goal       | shield=  2 | min_obs=1.2375408411026 | min_ultra=   1.0
+  ep= 42 | R=   78.39 | len=  94 | goal       | shield=  0 | min_obs=0.9061101824045181 | min_ultra=0.5334647297859192
+  ep= 43 | R=   77.36 | len=  75 | goal       | shield=  0 | min_obs=1.3905495405197144 | min_ultra=0.8776184320449829
+  ep= 44 | R=  213.73 | len= 767 | timeout    | shield=  0 | min_obs=2.95022189617157 | min_ultra=   1.0
+  ep= 45 | R=   79.39 | len=  83 | goal       | shield=  0 | min_obs=1.8306775391101837 | min_ultra=   1.0
+  ep= 46 | R=   78.14 | len=  72 | goal       | shield=  0 | min_obs=1.5442723035812378 | min_ultra=   1.0
+  ep= 47 | R=  214.36 | len= 765 | timeout    | shield=  0 | min_obs=2.709498107433319 | min_ultra=   1.0
+  ep= 48 | R=   78.43 | len=  85 | goal       | shield=  0 | min_obs=1.0916464030742645 | min_ultra=0.8649759888648987
+  ep= 49 | R=   78.94 | len=  76 | goal       | shield=  0 | min_obs=1.7042085528373718 | min_ultra=   1.0
+  ep= 50 | R=   88.48 | len= 133 | goal       | shield=  0 | min_obs=1.1962003260850906 | min_ultra=0.8281798958778381
+
+============================================================

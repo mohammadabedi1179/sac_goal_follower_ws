@@ -8,7 +8,7 @@ from rclpy.node import Node
 
 from stable_baselines3 import SAC
 
-from goal_env import GoalFollowerEnv
+from goal_env_gt import GoalFollowerEnv
 
 
 class SACTester(Node):
@@ -16,8 +16,8 @@ class SACTester(Node):
         super().__init__("sac_model_tester")
 
         # --- Parameters (override from CLI if you want) ---
-        self.declare_parameter("model_path", "/home/mohammadabedi/Documents/Autonomous Scooter/Simulation/Gazebo/src/sac_goal_follower/sac_goal_follower/results/Static_goal_marker_random_position_2_static_obstacles_in_the_FOV_1M_steps/models/sac_goal_follower_best.zip")
-        self.declare_parameter("episodes", 5)
+        self.declare_parameter("model_path", "/home/mohammadabedi/Documents/Autonomous Scooter/Simulation/Gazebo/src/sac_goal_follower/sac_goal_follower/results/Static_goal_marker_random_position_3_static_obstacles_in_the_FOV_1M_steps_TTC_80p_sccession_training_95p_succession_test/models/sac_goal_follower_best.zip")
+        self.declare_parameter("episodes", 50)
         self.declare_parameter("deterministic", True)
         self.declare_parameter("sleep_after_reset_sec", 0.2)
         self.declare_parameter("save_rollouts", True)

@@ -11,7 +11,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', ['launch/train_only.launch.py']),
         # Install the Python module files
-        ('lib/' + package_name, ['sac_goal_follower/__init__.py', 'sac_goal_follower/goal_env.py', 'sac_goal_follower/train_sac.py'])
+        ('lib/' + package_name, ['sac_goal_follower/__init__.py', 'sac_goal_follower/goal_env.py', 'sac_goal_follower/train_sac.py', 'sac_goal_follower/goal_env_gt.py', 'sac_goal_follower/goal_env_lstm.py', 'sac_goal_follower/lstm_sac_policy.py'])
     ],
     install_requires=[
         'setuptools',
@@ -30,6 +30,7 @@ setup(
             'train_sac = sac_goal_follower.train_sac:main',
             'test_disparity = sac_goal_follower.test_disparity:main',
             'test_sac = sac_goal_follower.test_sac_model:main',
+            'train_lstm_sac = sac_goal_follower.train_lstm_sac:main',
         ],
     },
 )

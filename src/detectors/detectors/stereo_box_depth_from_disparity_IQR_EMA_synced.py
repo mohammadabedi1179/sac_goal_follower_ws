@@ -15,6 +15,8 @@ import time
 from collections import deque
 from typing import Optional, Tuple, Dict, Any, List
 import math
+import yaml
+
 
 
 import cv2
@@ -37,7 +39,7 @@ IMAGE_WIDTH_PX = 640.0     # must match your camera config
 CX_PX = IMAGE_WIDTH_PX * 0.5
 
 # --- Camera mounting relative to base_link ---
-CAMERA_X_M = 0.35
+CAMERA_X_M = 0.4
 CAMERA_Y_M = 0.0
 
 DEBUG = False
@@ -119,6 +121,10 @@ class StereoBoxDepthIQR_EMA_Synced(Node):
         self.get_logger().info(f'Listening for disparity on:  {self.disparity_topic}')
         self.get_logger().info(f'Publishing depths on:        {self.out_topic}')
         self.get_logger().info(f'Sync slop={self.sync_slop}s queue={self.sync_queue} (img~10Hz disp~8Hz)')
+        # --- Load camera intrinsics from calibration ---
+        self.fx = 555.09075
+        self.cx = 319.05936
+
 
         # Synced subs
         self.det_sub  = Subscriber(self, Detection2DArray, self.detections_topic, qos_profile=10)
@@ -212,16 +218,18 @@ class StereoBoxDepthIQR_EMA_Synced(Node):
             # bbox center pixel
             cx_box = 0.5 * (bbox[0] + bbox[2])  # pixels
 
-            # bearing in camera frame (approx, horizontal only)
-            bearing = math.atan2((cx_box - CX_PX), FOCAL_PX)
+            # --- Bearing from pixel using calibration ---
+            bearing = math.atan((cx_box - self.cx) / self.fx)  # radians
 
-            # position relative to camera in XY plane
-            x_cam_rel = float(depth) * math.cos(bearing)
-            y_cam_rel = float(depth) * math.sin(bearing)
+            # Stereo depth is Z (forward), not ray length
+            x_cam_rel = float(depth)                      # forward (Z_cam)
+            y_cam_rel = float(depth) * math.tan(bearing)  # right-positive (X_cam)
 
-            # transform into base_link frame using your known camera offset
+            # Convert camera frame -> base_link
+            # base_link: +x forward, +y left
             x_base = CAMERA_X_M + x_cam_rel
-            y_base = CAMERA_Y_M + y_cam_rel
+            y_base = CAMERA_Y_M - y_cam_rel   # minus: camera-right → base-left negative
+
 
             results.append({
                 'id': track_id,

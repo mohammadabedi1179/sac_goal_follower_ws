@@ -1,0 +1,102 @@
+=== TRAINING RESULTS REPORT (shareable text) ===
+
+Episodes: 1116
+Episode range: 1 .. 1116
+
+== Outcome summary ==
+success   :    240 (21.51%)
+collision :     10 (0.90%)
+timeout   :    866 (77.60%)
+other     :      0 (0.00%)
+
+== Core stats ==
+reward: n=1116 | mean=23.22 std=327.3 | min=-2712 p10=6.872 p25=69.83 med=91.8 p75=100.1 p90=104.9 max=168.4
+episode_length: n=1116 | mean=435.9 steps std=147.7 steps | min=29 steps p10=120.5 steps p25=467.8 steps med=497 steps p75=516.2 steps p90=532 steps max=755 steps
+episode_time: n=1116 | mean=2.645e+04 s std=1.746e+04 s | min=52.85 s p10=3862 s p25=1.133e+04 s med=2.512e+04 s p75=3.892e+04 s p90=5.281e+04 s max=6.379e+04 s
+actor_loss: n=1109 | mean=-0.9517 std=2.878 | min=-8.408 p10=-3.825 p25=-2.844 med=-1.569 p75=0.2916 p90=2.762 max=13.63
+critic_loss: n=1109 | mean=2.415 std=2.959 | min=0.04038 p10=0.5985 p25=0.8688 med=1.429 p75=2.645 p90=5.22 max=31.81
+entropy_coef: n=1109 | mean=0.02547 std=0.0587 | min=0.01475 p10=0.01589 p25=0.01649 med=0.01792 p75=0.02067 p90=0.02501 max=0.9866
+min_ultrasonic_distance: n=1116 | mean=0.9677 m std=0.1211 m | min=0.1304 m p10=0.9971 m p25=1 m med=1 m p75=1 m p90=1 m max=1 m
+min_obstacle_depth: n=1116 | mean=2.528 m std=0.6333 m | min=0.6665 m p10=1.458 m p25=2.44 m med=2.713 m p75=2.839 m p90=2.964 m max=7.99 m
+ttc: n=309 | mean=102.2 s std=231.7 s | min=0.3959 s p10=4.336 s p25=11.48 s med=26.26 s p75=83.6 s p90=224.7 s max=1876 s
+v_cmd: n=1116 | mean=0.1723 std=0.4447 | min=-0.9979 p10=-0.1976 p25=-0.07352 med=0.04029 p75=0.2598 p90=0.9914 max=1
+w_cmd: n=1116 | mean=0.0212 std=0.3337 | min=-1 p10=-0.3337 p25=-0.1299 med=0.009093 p75=0.1948 p90=0.4175 max=1
+
+== Rolling reward (mean) ==
+rolling100: last=76.584 | best=94.946 | worst=-289.013
+
+== Quick correlations ==
+corr(reward, ttc)        = 0.1060
+corr(reward, v_cmd)      = 0.0588
+corr(reward, w_cmd)      = 0.0095
+corr(reward, min_obs)    = 0.4008
+corr(reward, min_ultra)  = 0.0462
+
+== Top 20 episodes by reward ==
+  ep=564 | R=168.397 | len=498 | time=9608.17s | reason=goal | ttc=nan | v=0.987 | w=0.606 | min_obs=2.898 | min_ultra=1.000
+  ep=599 | R=163.079 | len=504 | time=13096.22s | reason=goal | ttc=nan | v=0.980 | w=-0.762 | min_obs=2.016 | min_ultra=1.000
+  ep=1105 | R=159.876 | len=438 | time=62722.43s | reason=goal | ttc=nan | v=0.100 | w=0.365 | min_obs=2.542 | min_ultra=0.413
+  ep=1033 | R=157.286 | len=438 | time=55532.61s | reason=goal | ttc=nan | v=0.993 | w=0.852 | min_obs=1.328 | min_ultra=0.869
+  ep=534 | R=154.558 | len=444 | time=6626.60s | reason=goal | ttc=nan | v=0.997 | w=0.182 | min_obs=2.103 | min_ultra=1.000
+  ep=617 | R=153.348 | len=489 | time=14861.23s | reason=goal | ttc=nan | v=0.991 | w=-0.652 | min_obs=1.516 | min_ultra=1.000
+  ep=195 | R=151.675 | len=543 | time=19983.98s | reason=goal | ttc=nan | v=0.997 | w=-0.008 | min_obs=2.874 | min_ultra=0.983
+  ep=418 | R=149.221 | len=394 | time=573.42s | reason=goal | ttc=nan | v=0.877 | w=0.506 | min_obs=1.294 | min_ultra=0.828
+  ep=912 | R=142.789 | len=384 | time=43612.69s | reason=goal | ttc=nan | v=1.000 | w=-0.917 | min_obs=1.591 | min_ultra=1.000
+  ep=836 | R=142.526 | len=383 | time=36167.87s | reason=goal | ttc=nan | v=0.731 | w=-0.069 | min_obs=7.990 | min_ultra=1.000
+  ep=1081 | R=140.449 | len=368 | time=60379.49s | reason=goal | ttc=nan | v=0.998 | w=0.420 | min_obs=1.999 | min_ultra=1.000
+  ep=139 | R=140.173 | len=423 | time=14238.94s | reason=goal | ttc=nan | v=0.952 | w=0.450 | min_obs=1.243 | min_ultra=0.845
+  ep=981 | R=137.535 | len=437 | time=50420.79s | reason=goal | ttc=nan | v=0.998 | w=0.306 | min_obs=1.748 | min_ultra=0.910
+  ep=904 | R=137.193 | len=368 | time=42800.25s | reason=goal | ttc=nan | v=0.975 | w=0.010 | min_obs=1.848 | min_ultra=1.000
+  ep=934 | R=136.989 | len=358 | time=45838.80s | reason=goal | ttc=nan | v=0.978 | w=0.320 | min_obs=2.022 | min_ultra=1.000
+  ep=550 | R=135.794 | len=407 | time=8212.24s | reason=goal | ttc=0.853 | v=0.100 | w=-0.191 | min_obs=1.238 | min_ultra=1.000
+  ep=520 | R=134.039 | len=332 | time=5192.28s | reason=goal | ttc=nan | v=0.998 | w=0.973 | min_obs=1.037 | min_ultra=0.833
+  ep=431 | R=133.349 | len=388 | time=1895.93s | reason=goal | ttc=nan | v=0.982 | w=0.418 | min_obs=3.080 | min_ultra=0.773
+  ep=889 | R=132.411 | len=359 | time=41350.59s | reason=goal | ttc=nan | v=0.999 | w=-0.232 | min_obs=1.736 | min_ultra=1.000
+  ep=602 | R=132.378 | len=360 | time=13410.41s | reason=goal | ttc=nan | v=0.998 | w=-0.451 | min_obs=2.744 | min_ultra=1.000
+
+== Worst 20 episodes by reward ==
+  ep=219 | R=-2712.477 | len=542 | time=22334.71s | reason=timeout | ttc=1.873 | v=0.000 | w=0.000 | min_obs=1.056 | min_ultra=1.000
+  ep=69 | R=-2506.161 | len=489 | time=7155.96s | reason=timeout | ttc=1.103 | v=0.000 | w=0.000 | min_obs=1.034 | min_ultra=1.000
+  ep=824 | R=-2434.773 | len=507 | time=35058.77s | reason=timeout | ttc=1.127 | v=0.000 | w=0.000 | min_obs=1.025 | min_ultra=1.000
+  ep=615 | R=-2376.506 | len=493 | time=14648.52s | reason=timeout | ttc=2.820 | v=0.000 | w=0.000 | min_obs=1.065 | min_ultra=1.000
+  ep=32 | R=-2313.338 | len=499 | time=3612.98s | reason=timeout | ttc=nan | v=0.000 | w=0.000 | min_obs=1.146 | min_ultra=1.000
+  ep=55 | R=-2311.820 | len=500 | time=6025.15s | reason=timeout | ttc=1.138 | v=0.000 | w=0.000 | min_obs=0.783 | min_ultra=0.318
+  ep=377 | R=-2303.625 | len=535 | time=38024.15s | reason=timeout | ttc=0.396 | v=0.000 | w=0.000 | min_obs=0.841 | min_ultra=1.000
+  ep=98 | R=-2296.858 | len=512 | time=9929.94s | reason=timeout | ttc=nan | v=0.000 | w=0.000 | min_obs=0.947 | min_ultra=1.000
+  ep=381 | R=-2294.880 | len=534 | time=38396.65s | reason=timeout | ttc=nan | v=0.000 | w=0.000 | min_obs=1.024 | min_ultra=1.000
+  ep=58 | R=-2279.555 | len=498 | time=6328.99s | reason=timeout | ttc=1.336 | v=0.000 | w=0.000 | min_obs=1.082 | min_ultra=1.000
+  ep=56 | R=-2138.798 | len=520 | time=6144.10s | reason=timeout | ttc=0.959 | v=0.000 | w=0.000 | min_obs=1.037 | min_ultra=1.000
+  ep=189 | R=-2095.584 | len=525 | time=19350.59s | reason=timeout | ttc=1.273 | v=0.000 | w=0.000 | min_obs=1.125 | min_ultra=1.000
+  ep=711 | R=-2061.530 | len=500 | time=23762.11s | reason=timeout | ttc=nan | v=0.000 | w=0.000 | min_obs=0.920 | min_ultra=1.000
+  ep=379 | R=-2044.737 | len=517 | time=38239.43s | reason=timeout | ttc=0.950 | v=0.000 | w=0.000 | min_obs=0.828 | min_ultra=1.000
+  ep=527 | R=-1929.027 | len=490 | time=5882.31s | reason=timeout | ttc=1.268 | v=0.000 | w=0.000 | min_obs=1.037 | min_ultra=1.000
+  ep=33 | R=-1839.588 | len=492 | time=3721.11s | reason=timeout | ttc=nan | v=-0.865 | w=0.369 | min_obs=3.005 | min_ultra=1.000
+  ep=726 | R=-1825.268 | len=489 | time=25272.92s | reason=goal | ttc=nan | v=0.940 | w=-0.404 | min_obs=0.832 | min_ultra=0.664
+  ep=59 | R=-1794.772 | len=494 | time=6440.08s | reason=timeout | ttc=nan | v=0.000 | w=0.000 | min_obs=1.095 | min_ultra=1.000
+  ep=987 | R=-1783.709 | len=474 | time=50942.79s | reason=timeout | ttc=1.225 | v=0.000 | w=0.000 | min_obs=1.148 | min_ultra=1.000
+  ep=255 | R=-1783.381 | len=539 | time=25883.17s | reason=timeout | ttc=nan | v=0.000 | w=0.000 | min_obs=0.996 | min_ultra=1.000
+
+== Downsampled per-episode series (every 50) ==
+ep=1 | R=-168.527 | len=755 | time=165.10s | reason=timeout | ttc=nan | v=0.099 | w=-0.514 | min_obs=3.611 | min_ultra=1.000
+ep=51 | R=-0.074 | len=498 | time=5625.32s | reason=timeout | ttc=nan | v=-0.438 | w=0.043 | min_obs=2.869 | min_ultra=1.000
+ep=101 | R=54.242 | len=524 | time=10190.65s | reason=timeout | ttc=nan | v=-0.203 | w=0.284 | min_obs=2.902 | min_ultra=1.000
+ep=151 | R=94.969 | len=550 | time=15425.97s | reason=timeout | ttc=nan | v=0.046 | w=0.257 | min_obs=2.899 | min_ultra=1.000
+ep=201 | R=56.685 | len=526 | time=20610.20s | reason=timeout | ttc=nan | v=-0.430 | w=-0.681 | min_obs=2.206 | min_ultra=1.000
+ep=251 | R=10.398 | len=539 | time=25443.55s | reason=timeout | ttc=nan | v=-0.171 | w=-0.161 | min_obs=2.796 | min_ultra=1.000
+ep=301 | R=112.318 | len=378 | time=30388.96s | reason=goal | ttc=nan | v=0.957 | w=0.272 | min_obs=2.149 | min_ultra=0.996
+ep=351 | R=91.775 | len=544 | time=35399.85s | reason=timeout | ttc=78.296 | v=0.002 | w=-0.191 | min_obs=2.812 | min_ultra=1.000
+ep=401 | R=94.629 | len=514 | time=40365.35s | reason=timeout | ttc=23.372 | v=0.256 | w=0.087 | min_obs=2.682 | min_ultra=1.000
+ep=451 | R=102.433 | len=515 | time=3666.51s | reason=timeout | ttc=nan | v=-0.287 | w=-0.165 | min_obs=2.807 | min_ultra=1.000
+ep=501 | R=117.598 | len=299 | time=3497.30s | reason=goal | ttc=nan | v=0.999 | w=0.403 | min_obs=2.202 | min_ultra=1.000
+ep=551 | R=94.123 | len=510 | time=8316.64s | reason=timeout | ttc=16.324 | v=0.051 | w=-0.012 | min_obs=2.751 | min_ultra=1.000
+ep=601 | R=68.765 | len=468 | time=13308.24s | reason=timeout | ttc=28.332 | v=0.200 | w=-0.135 | min_obs=2.937 | min_ultra=1.000
+ep=651 | R=85.537 | len=488 | time=17852.30s | reason=timeout | ttc=23.759 | v=0.165 | w=-0.152 | min_obs=2.917 | min_ultra=1.000
+ep=701 | R=98.734 | len=484 | time=22740.07s | reason=timeout | ttc=nan | v=0.051 | w=-0.128 | min_obs=2.658 | min_ultra=1.000
+ep=751 | R=92.662 | len=495 | time=27807.63s | reason=timeout | ttc=nan | v=-0.040 | w=0.079 | min_obs=2.574 | min_ultra=1.000
+ep=801 | R=52.754 | len=70 | time=32764.54s | reason=goal | ttc=nan | v=0.998 | w=-0.300 | min_obs=2.860 | min_ultra=1.000
+ep=851 | R=101.018 | len=479 | time=37546.72s | reason=timeout | ttc=11.417 | v=0.153 | w=0.081 | min_obs=2.717 | min_ultra=1.000
+ep=901 | R=102.220 | len=461 | time=42556.15s | reason=timeout | ttc=nan | v=-0.054 | w=-0.099 | min_obs=2.650 | min_ultra=1.000
+ep=951 | R=102.969 | len=495 | time=47579.24s | reason=timeout | ttc=nan | v=-0.040 | w=0.104 | min_obs=2.509 | min_ultra=1.000
+ep=1001 | R=91.630 | len=454 | time=52450.05s | reason=timeout | ttc=nan | v=-0.144 | w=0.104 | min_obs=2.567 | min_ultra=1.000
+ep=1051 | R=99.757 | len=494 | time=57344.08s | reason=timeout | ttc=232.111 | v=0.021 | w=-0.116 | min_obs=2.510 | min_ultra=1.000
+ep=1101 | R=95.332 | len=196 | time=62283.20s | reason=goal | ttc=nan | v=0.989 | w=-0.571 | min_obs=0.982 | min_ultra=0.746
